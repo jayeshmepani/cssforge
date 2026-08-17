@@ -1,0 +1,6 @@
+/target/
+/cssforge-out/
+# *.modern.css
+*.css.patch
+*.css.bak
+.DS_Store

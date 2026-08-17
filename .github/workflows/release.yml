@@ -1,0 +1,150 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}-${{ matrix.arch }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          # Linux — Intel / AMD
+          - runner: ubuntu-latest
+            platform: linux
+            arch: x64
+
+          # Linux — ARM64 / Snapdragon
+          - runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+
+          # Windows — Intel / AMD
+          - runner: windows-latest
+            platform: windows
+            arch: x64
+
+          # Windows — Snapdragon / ARM64
+          - runner: windows-11-arm
+            platform: windows
+            arch: arm64
+
+          # macOS — Apple Silicon M-series only
+          - runner: macos-latest
+            platform: macos
+            arch: arm64
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Rust toolchain
+        run: |
+          rustc --version
+          cargo --version
+          rustc -vV
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Build release
+        run: cargo build --workspace --release --locked
+
+      # ─────────────────────────────────────────────
+      # Windows packaging
+      # ─────────────────────────────────────────────
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          $archive = "cssforge-$env:GITHUB_REF_NAME-${{ matrix.platform }}-${{ matrix.arch }}.zip"
+
+          Compress-Archive `
+            -Path "target\release\cssforge.exe" `
+            -DestinationPath "dist\$archive"
+
+      # ─────────────────────────────────────────────
+      # Linux / macOS packaging
+      # ─────────────────────────────────────────────
+
+      - name: Package Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+
+          archive="cssforge-${GITHUB_REF_NAME}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz"
+
+          tar \
+            -czf "dist/${archive}" \
+            -C target/release \
+            cssforge
+
+      # ─────────────────────────────────────────────
+      # Upload each build
+      # ─────────────────────────────────────────────
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cssforge-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+
+    needs:
+      - build
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          mkdir -p release-assets
+
+          find artifacts \
+            -type f \
+            \( -name "*.zip" -o -name "*.tar.gz" \) \
+            -exec cp {} release-assets/ \;
+
+          echo "Release assets:"
+          ls -lah release-assets
+
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            release-assets/* \
+            --verify-tag \
+            --generate-notes \
+            --title "CSSForge ${GITHUB_REF_NAME}"
