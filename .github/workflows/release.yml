@@ -3,148 +3,214 @@ name: Build & Release
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release version tag (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   build:
     name: ${{ matrix.platform }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
 
     strategy:
       fail-fast: false
-
       matrix:
         include:
-          # Linux — Intel / AMD
-          - runner: ubuntu-latest
+          # ── Linux (Intel / AMD x86_64) ──────────────────────────────────
+          - runner: ubuntu-24.04
             platform: linux
             arch: x64
+            target: x86_64-unknown-linux-gnu
 
-          # Linux — ARM64 / Snapdragon
+          # ── Linux (ARM64 / Snapdragon) ──────────────────────────────────
           - runner: ubuntu-24.04-arm
             platform: linux
             arch: arm64
+            target: aarch64-unknown-linux-gnu
 
-          # Windows — Intel / AMD
-          - runner: windows-latest
+          # ── Windows (Intel / AMD x86_64) ────────────────────────────────
+          - runner: windows-2022
             platform: windows
             arch: x64
+            target: x86_64-pc-windows-msvc
 
-          # Windows — Snapdragon / ARM64
+          # ── Windows (Snapdragon / ARM64) ────────────────────────────────
           - runner: windows-11-arm
             platform: windows
             arch: arm64
+            target: aarch64-pc-windows-msvc
 
-          # macOS — Apple Silicon M-series only
-          - runner: macos-latest
+          # ── macOS (Apple Silicon M-Series) ──────────────────────────────
+          - runner: macos-15
             platform: macos
             arch: arm64
-
-    runs-on: ${{ matrix.runner }}
+            target: aarch64-apple-darwin
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: vars
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.release_tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "RESOLVED_TAG=${TAG}" >> "$GITHUB_ENV"
 
       - name: Show Rust toolchain
+        shell: bash
         run: |
           rustc --version
           cargo --version
           rustc -vV
 
-      - name: Test
+      - name: Run workspace tests
+        shell: bash
         run: cargo test --workspace --locked
 
-      - name: Build release
+      - name: Build release binary
+        shell: bash
         run: cargo build --workspace --release --locked
 
-      # ─────────────────────────────────────────────
-      # Windows packaging
-      # ─────────────────────────────────────────────
-
-      - name: Package Windows
-        if: runner.os == 'Windows'
+      - name: Package release artifact
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
+          $tag = $env:RESOLVED_TAG
+          $platform = "${{ matrix.platform }}"
+          $arch = "${{ matrix.arch }}"
+          $stage = Join-Path 'dist' "cssforge-$tag-$platform-$arch"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-          $archive = "cssforge-$env:GITHUB_REF_NAME-${{ matrix.platform }}-${{ matrix.arch }}.zip"
+          if ($IsWindows) {
+              $binPath = "target/release/cssforge.exe"
+              if (-not (Test-Path $binPath)) {
+                  throw "Release binary was not found at $binPath"
+              }
+              Copy-Item -LiteralPath $binPath -Destination $stage -Force
+              New-Item -ItemType Directory -Force -Path dist/assets | Out-Null
+              $zipFile = "dist/assets/cssforge-$tag-$platform-$arch.zip"
+              Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zipFile -Force
+          } else {
+              $binPath = "target/release/cssforge"
+              if (-not (Test-Path $binPath)) {
+                  throw "Release binary was not found at $binPath"
+              }
+              Copy-Item -LiteralPath $binPath -Destination $stage -Force
+              chmod +x (Join-Path $stage 'cssforge')
+              New-Item -ItemType Directory -Force -Path dist/assets | Out-Null
+              $tarFile = "dist/assets/cssforge-$tag-$platform-$arch.tar.gz"
+              tar -czf $tarFile -C $stage cssforge
+          }
 
-          Compress-Archive `
-            -Path "target\release\cssforge.exe" `
-            -DestinationPath "dist\$archive"
+          Get-ChildItem -Path dist/assets | Format-Table Name, Length
 
-      # ─────────────────────────────────────────────
-      # Linux / macOS packaging
-      # ─────────────────────────────────────────────
-
-      - name: Package Unix
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          mkdir -p dist
-
-          archive="cssforge-${GITHUB_REF_NAME}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz"
-
-          tar \
-            -czf "dist/${archive}" \
-            -C target/release \
-            cssforge
-
-      # ─────────────────────────────────────────────
-      # Upload each build
-      # ─────────────────────────────────────────────
-
-      - name: Upload build artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: cssforge-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/*
+          path: dist/assets/*
           if-no-files-found: error
 
   release:
-    name: Create GitHub Release
-
-    needs:
-      - build
-
+    name: Publish GitHub Release
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: vars
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.release_tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: release-assets
+          merge-multiple: true
 
-      - name: Prepare release assets
-        shell: bash
-        run: |
-          mkdir -p release-assets
-
-          find artifacts \
-            -type f \
-            \( -name "*.zip" -o -name "*.tar.gz" \) \
-            -exec cp {} release-assets/ \;
-
-          echo "Release assets:"
-          ls -lah release-assets
-
-      - name: Generate SHA256 checksums
+      - name: Generate SHA256 Checksums
         shell: bash
         run: |
           cd release-assets
           sha256sum * > SHA256SUMS.txt
+          echo "=== SHA256SUMS.txt ==="
           cat SHA256SUMS.txt
 
-      - name: Create GitHub Release
+      - name: Write release notes
+        shell: bash
+        run: |
+          TAG="${RELEASE_TAG}"
+          cat > release-notes.md <<EOF
+          # CSSForge ${TAG}
+
+          Safety-first semantic CSS refactoring and modernization workbench.
+
+          ## Official Multi-Platform Binaries
+
+          | Platform | Architecture | Archive File |
+          |---|---|---|
+          | **Windows** | Intel / AMD x64 | \`cssforge-${TAG}-windows-x64.zip\` |
+          | **Windows** | Snapdragon / ARM64 | \`cssforge-${TAG}-windows-arm64.zip\` |
+          | **Linux** | Intel / AMD x64 | \`cssforge-${TAG}-linux-x64.tar.gz\` |
+          | **Linux** | Snapdragon / ARM64 | \`cssforge-${TAG}-linux-arm64.tar.gz\` |
+          | **macOS** | Apple Silicon M-Series | \`cssforge-${TAG}-macos-arm64.tar.gz\` |
+
+          ## Checksums
+
+          SHA256 checksums are available in \`SHA256SUMS.txt\`.
+
+          ### Verification Example
+          \`\`\`bash
+          sha256sum -c SHA256SUMS.txt
+          \`\`\`
+          EOF
+
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            release-assets/* \
-            --verify-tag \
-            --generate-notes \
-            --title "CSSForge ${GITHUB_REF_NAME}"
+          set -euo pipefail
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Updating existing release ${RELEASE_TAG}..."
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
+            gh release edit "${RELEASE_TAG}" \
+              --title "CSSForge ${RELEASE_TAG}" \
+              --notes-file release-notes.md
+          else
+            echo "Creating new release ${RELEASE_TAG}..."
+            gh release create "${RELEASE_TAG}" release-assets/* \
+              --title "CSSForge ${RELEASE_TAG}" \
+              --notes-file release-notes.md
+          fi
