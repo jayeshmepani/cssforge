@@ -1,11 +1,12 @@
 use crate::app::{App, Screen};
+use crate::banner;
 use cssforge_core::{OutputMode, RuleSection, Safety, SafetyLevel};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
 };
 
 const ACCENT: Color = Color::Cyan;
@@ -118,17 +119,44 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &App) {
 }
 
 fn render_files(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let mut lines = Vec::new();
     let selected_count = app.files.iter().filter(|f| f.selected).count();
+    let block = Block::bordered()
+        .title(" Step 1 of 4: Select CSS Files — [Enter] Next ➔  ·  [Space] Toggle  ·  [a] All ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
 
-    lines.push(Line::styled(
-        " Choose the CSS files you want to modernize. Press [Space] to toggle, [a] for all, [Enter] to confirm.",
-        Style::default().fg(Color::Cyan),
-    ));
-    lines.push(Line::raw(""));
+    let banner_h = banner::reserved_height(inner.width, inner.height);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(banner_h),
+            Constraint::Length(2),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
 
+    if banner_h > 0 {
+        frame.render_widget(
+            Paragraph::new(Text::from(banner::render_lines(inner.width))),
+            chunks[0],
+        );
+    }
+
+    frame.render_widget(
+        Paragraph::new(Text::from(vec![
+            Line::styled(
+                " Choose the CSS files you want to modernize. Press [Space] to toggle, [a] for all, [Enter] to confirm.",
+                Style::default().fg(Color::Cyan),
+            ),
+            Line::raw(""),
+        ])),
+        chunks[1],
+    );
+
+    let mut list_lines = Vec::new();
     if app.files.is_empty() {
-        lines.push(Line::styled(
+        list_lines.push(Line::styled(
             " No .css files found under the selected directory.",
             Style::default().fg(Color::Yellow),
         ));
@@ -146,104 +174,139 @@ fn render_files(frame: &mut Frame<'_>, area: Rect, app: &App) {
             } else {
                 Style::default().fg(MUTED)
             };
-            lines.push(Line::styled(
+            list_lines.push(Line::styled(
                 format!(" {marker} {}", relative.display()),
                 style,
             ));
         }
     }
 
-    lines.push(Line::raw(""));
-    lines.push(Line::styled(
-        format!(
-            " Selected: {} of {} file(s)  ·  Press [ENTER] to proceed to Rules ➔",
-            selected_count,
-            app.files.len()
-        ),
-        Style::default().fg(if selected_count > 0 {
-            Color::Green
-        } else {
-            Color::Yellow
-        }),
-    ));
+    let offset = scroll_offset(app.file_cursor, chunks[2].height as usize);
+    frame.render_widget(
+        Paragraph::new(Text::from(list_lines)).scroll((offset as u16, 0)),
+        chunks[2],
+    );
 
-    let offset = scroll_offset(app.file_cursor, area.height.saturating_sub(4) as usize);
-    let widget = Paragraph::new(Text::from(lines))
-        .block(Block::bordered().title(
-            " Step 1 of 4: Select CSS Files — [Enter] Next ➔  ·  [Space] Toggle  ·  [a] All ",
-        ))
-        .scroll((offset as u16, 0));
-    frame.render_widget(widget, area);
+    frame.render_widget(
+        Paragraph::new(Line::styled(
+            format!(
+                " Selected: {} of {} file(s)  ·  Press [ENTER] to proceed to Rules ➔",
+                selected_count,
+                app.files.len()
+            ),
+            Style::default().fg(if selected_count > 0 {
+                Color::Green
+            } else {
+                Color::Yellow
+            }),
+        )),
+        chunks[3],
+    );
 }
 
 fn render_rules(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let enabled_count = app.rules.iter().filter(|r| r.enabled).count();
-    let mut lines = Vec::new();
+    let all_enabled = !app.rules.is_empty() && enabled_count == app.rules.len();
 
-    lines.push(Line::from(vec![
-        Span::styled(" Active Preset: ", Style::default().fg(MUTED)),
-        Span::styled(
-            format!("[{}]", app.preset),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+    let block = Block::bordered().title(
+        " Step 2 of 4: Select Rules — [Enter] Next ➔  ·  [Space] Toggle  ·  [a] Select All  ·  [p] Preset  ·  [Esc] Back ",
+    );
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(4),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let header = Paragraph::new(Text::from(vec![
+        Line::from(vec![
+            Span::styled(" Active Preset: ", Style::default().fg(MUTED)),
+            Span::styled(
+                format!("[{}]", app.preset),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("   (Press ", Style::default().fg(MUTED)),
+            Span::styled(
+                "p",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " to cycle presets: Conservative ➔ Modern ➔ Refactor ➔ Aggressive ➔ Custom)",
+                Style::default().fg(MUTED),
+            ),
+        ]),
+        Line::styled(
+            " ⚠ DISCLAIMER: CSSForge is a strictly forward semantic modernization & refactoring engine.",
+            Style::default().fg(Color::Yellow),
         ),
-        Span::styled("   (Press ", Style::default().fg(MUTED)),
-        Span::styled(
-            "p",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            " to cycle presets: Conservative ➔ Modern ➔ Refactor ➔ Aggressive ➔ Custom)",
+        Line::styled(
+            "   Backward / reverse demodernization is unsupported. Always maintain Git backups before applying changes.",
             Style::default().fg(MUTED),
         ),
+        Line::from(vec![
+            Span::styled(
+                " [a] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                if all_enabled {
+                    "Deselect All rules"
+                } else {
+                    "Select All rules"
+                },
+                Style::default().fg(Color::Cyan),
+            ),
+            Span::styled(
+                "   ·   [Space] toggle one   ·   [PgUp/PgDn] scroll page",
+                Style::default().fg(MUTED),
+            ),
+        ]),
     ]));
-    lines.push(Line::styled(
-        " ⚠ DISCLAIMER: CSSForge is a strictly forward semantic modernization & refactoring engine.",
-        Style::default().fg(Color::Yellow),
-    ));
-    lines.push(Line::styled(
-        "   Backward / reverse demodernization is unsupported. Always maintain Git backups before applying changes.",
-        Style::default().fg(MUTED),
-    ));
-    lines.push(Line::raw(""));
+    frame.render_widget(header, chunks[0]);
 
+    let mut lines = Vec::new();
     let mut current_section: Option<RuleSection> = None;
     let mut cursor_line_idx = 0;
-    let mut line_counter = 4;
+    let list_width = chunks[1].width as usize;
 
     for (idx, item) in app.rules.iter().enumerate() {
         if current_section != Some(item.definition.section) {
             current_section = Some(item.definition.section);
             if idx > 0 {
                 lines.push(Line::raw(""));
-                line_counter += 1;
             }
             let (header_title, header_color) = match item.definition.section {
                 RuleSection::Modernize => (
-                    "── MODERNIZE (Native Nesting, Range Syntax & Modern Selectors) ──────────────────────",
+                    "── MODERNIZE (Native Nesting, Range Syntax & Modern Selectors)",
                     Color::Cyan,
                 ),
                 RuleSection::Refactor => (
-                    "── REFACTOR (Consolidation, Deduplication & Structural Cleanup) ─────────────────────",
+                    "── REFACTOR (Consolidation, Deduplication & Structural Cleanup)",
                     Color::LightBlue,
                 ),
             };
             lines.push(Line::styled(
-                format!(" {}", header_title),
+                fit_width(&format!(" {header_title} "), list_width),
                 Style::default()
                     .fg(header_color)
                     .add_modifier(Modifier::BOLD),
             ));
-            line_counter += 1;
         }
 
         if idx == app.rule_cursor {
-            cursor_line_idx = line_counter;
+            cursor_line_idx = lines.len();
         }
-        line_counter += 1;
 
         let marker = if item.enabled { "[x]" } else { "[ ]" };
         let level = match item.definition.safety_level {
@@ -253,9 +316,12 @@ fn render_rules(frame: &mut Frame<'_>, area: Rect, app: &App) {
             SafetyLevel::SemanticReview => "L3",
             SafetyLevel::Architectural => "L4",
         };
-        let text = format!(
-            "  {marker} {:<34} [{:<21} · {}]  {}",
-            item.definition.title, item.definition.category, level, item.definition.description
+        let text = fit_width(
+            &format!(
+                "  {marker} {:<34} [{:<21} · {}]  {}",
+                item.definition.title, item.definition.category, level, item.definition.description
+            ),
+            list_width,
         );
         let style = if idx == app.rule_cursor {
             Style::default()
@@ -270,8 +336,12 @@ fn render_rules(frame: &mut Frame<'_>, area: Rect, app: &App) {
         lines.push(Line::styled(text, style));
     }
 
-    lines.push(Line::raw(""));
-    lines.push(Line::styled(
+    let visible_rows = chunks[1].height as usize;
+    let offset = scroll_offset(cursor_line_idx, visible_rows);
+    let list = Paragraph::new(Text::from(lines)).scroll((offset as u16, 0));
+    frame.render_widget(list, chunks[1]);
+
+    let summary = Paragraph::new(Line::styled(
         format!(
             " Enabled: {} of {} rule(s)  ·  Press [ENTER] to confirm & choose Output Settings ➔",
             enabled_count,
@@ -283,15 +353,7 @@ fn render_rules(frame: &mut Frame<'_>, area: Rect, app: &App) {
             Color::Yellow
         }),
     ));
-
-    let offset = scroll_offset(cursor_line_idx, area.height.saturating_sub(4) as usize);
-    let widget = Paragraph::new(Text::from(lines))
-        .block(
-            Block::bordered().title(" Step 2 of 4: Select Rules — [Enter] Next ➔  ·  [Space] Toggle  ·  [p] Preset  ·  [Esc] Back ")
-        )
-        .scroll((offset as u16, 0))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(widget, area);
+    frame.render_widget(summary, chunks[2]);
 }
 
 fn render_output(frame: &mut Frame<'_>, area: Rect, app: &App) {
@@ -457,8 +519,13 @@ fn render_output(frame: &mut Frame<'_>, area: Rect, app: &App) {
 fn render_done(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let mut lines = Vec::new();
     let changed_count = app.write_results.len();
-
-    lines.push(Line::raw(""));
+    let inner_w = area.width.saturating_sub(2);
+    let inner_h = area.height.saturating_sub(2);
+    if banner::reserved_height(inner_w, inner_h) > 0 {
+        lines.extend(banner::render_lines(inner_w));
+    } else {
+        lines.push(Line::raw(""));
+    }
     if changed_count > 0 {
         lines.push(Line::styled(
             format!(
@@ -661,6 +728,8 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
             Span::raw(" Next: Output ➔   "),
             Span::styled("[Space]", key_style()),
             Span::raw(" Toggle   "),
+            Span::styled("[a]", key_style()),
+            Span::raw(" Select All   "),
             Span::styled("[p]", key_style()),
             Span::raw(" Preset   "),
             Span::styled("[Esc/b]", key_style()),
@@ -739,6 +808,20 @@ fn scroll_offset(cursor: usize, visible_rows: usize) -> usize {
     } else {
         cursor + 1 - visible_rows
     }
+}
+
+fn fit_width(text: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= width {
+        return text.to_string();
+    }
+    if width == 1 {
+        return "…".to_string();
+    }
+    chars.iter().take(width - 1).collect::<String>() + "…"
 }
 
 fn compact_path(root: &std::path::Path, path: &std::path::Path) -> String {

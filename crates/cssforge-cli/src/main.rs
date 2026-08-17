@@ -1,8 +1,8 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use cssforge_core::{
-    analyze_workspace, apply_selected_plans, discover_css_files, rule_definitions, write_result,
-    OutputMode, OutputOptions, Preset, RuleSection, Safety,
+    OutputMode, OutputOptions, Preset, RuleSection, Safety, analyze_workspace,
+    apply_selected_plans, discover_css_files, rule_definitions, write_result,
 };
 use std::{fs, path::PathBuf};
 
@@ -296,8 +296,12 @@ fn apply_command(
 }
 
 fn rules_command() {
-    println!("DISCLAIMER: CSSForge is a strictly forward semantic modernization & refactoring workbench.");
-    println!("Backward/reverse demodernization is unsupported. Always maintain Git backups before applying changes.\n");
+    println!(
+        "DISCLAIMER: CSSForge is a strictly forward semantic modernization & refactoring workbench."
+    );
+    println!(
+        "Backward/reverse demodernization is unsupported. Always maintain Git backups before applying changes.\n"
+    );
     for section in RuleSection::ALL {
         println!("=== {} ===", section.label());
         for rule in rule_definitions()

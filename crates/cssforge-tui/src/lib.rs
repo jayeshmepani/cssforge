@@ -1,4 +1,5 @@
 mod app;
+mod banner;
 mod ui;
 
 use anyhow::Result;

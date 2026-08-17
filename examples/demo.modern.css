@@ -251,6 +251,7 @@
 .card {
   color: #222;
   padding: 1rem;
+  border: 1px solid transparent;
 
   &:hover {
     color: #111 !important;
@@ -286,6 +287,14 @@
 
   @supports (display: grid) {
     display: grid;
+  }
+
+  &:has(> img:first-child) {
+    overflow: clip;
+  }
+
+  &:has(.badge[data-status="warning"]) {
+    border-color: orange;
   }
 }
 
@@ -350,6 +359,10 @@
 
   ~.hint {
     color: var(--text-2);
+  }
+
+  &:not(.button--ghost, .button--link) {
+    box-shadow: var(--shadow-1);
   }
 }
 
@@ -470,12 +483,27 @@
   min-inline-size: 0;
 }
 
-.button:not(.button--ghost, .button--link) {
-  box-shadow: var(--shadow-1);
-}
 
-input:not([type="checkbox"], [type="radio"]) {
-  min-block-size: 2.5rem;
+input {
+  &:not([type="checkbox"], [type="radio"]) {
+    min-block-size: 2.5rem;
+  }
+
+  &:user-invalid {
+    border-color: crimson;
+  }
+
+  &:user-valid {
+    border-color: seagreen;
+  }
+
+  &:placeholder-shown {
+    color: gray;
+  }
+
+  &:autofill {
+    box-shadow: 0 0 0 1000px color-mix(in srgb, var(--accent), white 90%) inset;
+  }
 }
 
 .list>li:not(:last-child) {
@@ -487,15 +515,6 @@ input:not([type="checkbox"], [type="radio"]) {
   outline-offset: 4px;
 }
 
-.card {
-  &:has(> img:first-child) {
-    overflow: clip;
-  }
-
-  &:has(.badge[data-status="warning"]) {
-    border-color: orange;
-  }
-}
 
 .tabs:has([aria-selected="true"]) {
   --indicator-opacity: 1;
@@ -558,9 +577,6 @@ article:has(h2 + p) h2 {
   box-shadow: 0 0 0 2px gold;
 }
 
-.card {
-  border: 1px solid transparent;
-}
 
 .cardinal {
   color: firebrick;
@@ -647,27 +663,23 @@ article:has(h2 + p) h2 {
 
 .order-a {
   color: red;
+  color: green;
 }
 
 .order-b {
   color: blue;
 }
 
-.order-a {
-  color: green;
-}
 
 .chip {
   padding: 0.25rem 0.5rem;
+  border-radius: 999px;
 }
 
 .unrelated-between-chip-rules {
   color: tomato;
 }
 
-.chip {
-  border-radius: 999px;
-}
 
 /* ========================================================================== */
 /* CUSTOM PROPERTIES AND RAW TOKEN COMPLEXITY                                 */
@@ -1000,23 +1012,6 @@ dialog.demo-dialog {
 /* FORM STATES                                                                */
 /* ========================================================================== */
 
-input {
-  &:user-invalid {
-    border-color: crimson;
-  }
-
-  &:user-valid {
-    border-color: seagreen;
-  }
-
-  &:placeholder-shown {
-    color: gray;
-  }
-
-  &:autofill {
-    box-shadow: 0 0 0 1000px color-mix(in srgb, var(--accent), white 90%) inset;
-  }
-}
 
 .form-row {
   &:focus-within {
@@ -1145,13 +1140,14 @@ body:has(dialog[open]) :where(header, main, footer) {
 
 .comment-boundary {
   color: navy;
+
+  &:hover {
+    color: blue;
+  }
 }
 
 /* This comment is intentionally between two related selectors. */
 
-.comment-boundary:hover {
-  color: blue;
-}
 
 /* ========================================================================== */
 /* NESTED PSEUDO-CLASS FUNCTIONS                                              */
@@ -5108,10 +5104,8 @@ body:has(dialog[open]) :where(header, main, footer) {
 
 .final-duplicate {
   color: navy;
+  background: aliceblue;
 }
 
 /* separator comment that should remain where it is */
 
-.final-duplicate {
-  background: aliceblue;
-}

@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cssforge_core::{
-    analyze_workspace, apply_selected_plans, discover_css_files, is_git_dirty, rule_definitions,
-    unified_diff, write_result, OutputMode, OutputOptions, PlanEntry, Preset, RuleDefinition,
-    RuleId, Safety, WorkspaceReport, WriteResult,
+    OutputMode, OutputOptions, PlanEntry, Preset, RuleDefinition, RuleId, Safety, WorkspaceReport,
+    WriteResult, analyze_workspace, apply_selected_plans, discover_css_files, is_git_dirty,
+    rule_definitions, unified_diff, write_result,
 };
 use std::{fs, path::PathBuf};
 
@@ -508,14 +508,32 @@ impl App {
     }
 
     fn page_up(&mut self) {
-        if self.screen == Screen::Diff {
-            self.diff_scroll = self.diff_scroll.saturating_sub(10);
+        match self.screen {
+            Screen::Diff => {
+                self.diff_scroll = self.diff_scroll.saturating_sub(10);
+            }
+            Screen::Files => {
+                self.file_cursor = self.file_cursor.saturating_sub(10);
+            }
+            Screen::Rules => {
+                self.rule_cursor = self.rule_cursor.saturating_sub(10);
+            }
+            _ => {}
         }
     }
 
     fn page_down(&mut self) {
-        if self.screen == Screen::Diff {
-            self.diff_scroll = self.diff_scroll.saturating_add(10);
+        match self.screen {
+            Screen::Diff => {
+                self.diff_scroll = self.diff_scroll.saturating_add(10);
+            }
+            Screen::Files => {
+                self.file_cursor = (self.file_cursor + 10).min(self.files.len().saturating_sub(1));
+            }
+            Screen::Rules => {
+                self.rule_cursor = (self.rule_cursor + 10).min(self.rules.len().saturating_sub(1));
+            }
+            _ => {}
         }
     }
 
@@ -565,6 +583,7 @@ impl App {
 mod tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    use cssforge_core::{OutputMode, Preset};
 
     fn make_key(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -640,6 +659,42 @@ mod tests {
         // Back to Rules via Backspace
         app.handle_key(make_key(KeyCode::Backspace))?;
         assert_eq!(app.screen, Screen::Rules);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn test_rules_select_all_and_page_scroll() -> Result<()> {
+        let temp_dir = std::env::temp_dir().join(format!("cssforge_all_{}", std::process::id()));
+        fs::create_dir_all(&temp_dir)?;
+        fs::write(temp_dir.join("a.css"), "body { margin: 0; }")?;
+
+        let mut app = App::new(temp_dir.clone())?;
+        app.handle_key(make_key(KeyCode::Enter))?;
+        assert_eq!(app.screen, Screen::Rules);
+        assert!(!app.rules.is_empty());
+
+        app.handle_key(make_key(KeyCode::Char('a')))?;
+        let enabled = app.rules.iter().filter(|r| r.enabled).count();
+        assert!(enabled == 0 || enabled == app.rules.len());
+        if enabled == 0 {
+            app.handle_key(make_key(KeyCode::Char('a')))?;
+        }
+        assert!(app.rules.iter().all(|r| r.enabled));
+        assert_eq!(app.preset, Preset::Custom);
+
+        app.handle_key(make_key(KeyCode::Char('a')))?;
+        assert!(app.rules.iter().all(|r| !r.enabled));
+
+        app.handle_key(make_key(KeyCode::Char('a')))?;
+        assert!(app.rules.iter().all(|r| r.enabled));
+
+        app.rule_cursor = 0;
+        app.handle_key(make_key(KeyCode::PageDown))?;
+        assert_eq!(app.rule_cursor, 10.min(app.rules.len() - 1));
+        app.handle_key(make_key(KeyCode::PageUp))?;
+        assert_eq!(app.rule_cursor, 0);
 
         let _ = fs::remove_dir_all(&temp_dir);
         Ok(())

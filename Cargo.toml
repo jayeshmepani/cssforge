@@ -7,10 +7,12 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
-edition = "2021"
+version = "0.2.0"
+edition = "2024"
 license = "MIT"
-authors = ["CSSForge Contributors"]
+authors = ["Jayesh Patel <jayeshmepani777@gmail.com>"]
+repository = "https://github.com/jayeshmepani/cssforge"
+homepage = "https://github.com/jayeshmepani/cssforge"
 
 [workspace.dependencies]
 anyhow = "1.0.104"
