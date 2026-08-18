@@ -217,11 +217,8 @@ jobs:
 
   publish-crates:
     name: Publish to crates.io
-    needs: build
+    needs: release
     runs-on: ubuntu-latest
-    if: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
-    env:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
     steps:
       - name: Checkout repository
@@ -233,17 +230,27 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Publish cssforge-core
-        run: cargo publish -p cssforge-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then
+            echo "CARGO_REGISTRY_TOKEN is not configured. Skipping crates.io publish."
+            exit 0
+          fi
 
-      - name: Wait for crates.io index update
-        run: sleep 25
+          echo "Publishing cssforge-core..."
+          cargo publish -p cssforge-core --token "${CARGO_REGISTRY_TOKEN}"
 
-      - name: Publish cssforge-tui
-        run: cargo publish -p cssforge-tui --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          echo "Waiting 30s for crates.io index propagation..."
+          sleep 30
 
-      - name: Wait for crates.io index update
-        run: sleep 25
+          echo "Publishing cssforge-tui..."
+          cargo publish -p cssforge-tui --token "${CARGO_REGISTRY_TOKEN}"
 
-      - name: Publish cssforge CLI
-        run: cargo publish -p cssforge --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          echo "Waiting 30s for crates.io index propagation..."
+          sleep 30
+
+          echo "Publishing cssforge..."
+          cargo publish -p cssforge --token "${CARGO_REGISTRY_TOKEN}"
