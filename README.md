@@ -1,9 +1,12 @@
 # CSSForge
 
-[![crates.io](https://img.shields.io/crates/v/cssforge.svg?logo=rust)](https://crates.io/crates/cssforge)
-[![Documentation](https://docs.rs/cssforge/badge.svg)](https://docs.rs/cssforge)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust: 2024](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg?logo=rust)](https://www.rust-lang.org)
+[![Crates.io Version](https://img.shields.io/crates/v/cssforge.svg?style=flat-square)](https://crates.io/crates/cssforge)
+[![Total Downloads](https://img.shields.io/crates/d/cssforge.svg?style=flat-square)](https://crates.io/crates/cssforge)
+[![Documentation](https://img.shields.io/docsrs/cssforge?style=flat-square)](https://docs.rs/cssforge)
+[![Rust Version](https://img.shields.io/badge/rust-1.85%2B-blue.svg?style=flat-square)](https://www.rust-lang.org)
+[![Edition](https://img.shields.io/badge/edition-2024-blue.svg?style=flat-square)](https://www.rust-lang.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Status](https://img.shields.io/badge/status-stable-brightgreen.svg?style=flat-square)](https://github.com/jayeshmepani/cssforge/releases)
 
 **CSSForge** is a safety-first, lossless semantic CSS refactoring and modernization workbench written in Rust. It transforms legacy CSS stylesheets into modern native CSS features (native nesting, Range media queries, `:is()` factoring, `@layer` consolidation, and dead-code pruning) while guaranteeing **zero declaration loss** and surgical byte-level preservation.
 
