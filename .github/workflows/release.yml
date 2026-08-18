@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Release version tag (e.g. v0.1.0)'
+        description: 'Release version tag (e.g. v0.2.0)'
         required: true
-        default: 'v0.1.0'
+        default: 'v0.2.0'
 
 permissions:
   contents: write
@@ -214,3 +214,36 @@ jobs:
               --title "CSSForge ${RELEASE_TAG}" \
               --notes-file release-notes.md
           fi
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: build
+    runs-on: ubuntu-latest
+    if: env.CARGO_REGISTRY_TOKEN != ''
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Rust toolchain
+        shell: bash
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: Publish cssforge-core
+        run: cargo publish -p cssforge-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io index update
+        run: sleep 25
+
+      - name: Publish cssforge-tui
+        run: cargo publish -p cssforge-tui --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io index update
+        run: sleep 25
+
+      - name: Publish cssforge CLI
+        run: cargo publish -p cssforge --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
