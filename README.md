@@ -39,20 +39,20 @@ Download from [GitHub Releases](https://github.com/jayeshmepani/cssforge/release
 #### 🐧 Linux (x64 / ARM64)
 ```bash
 # Extract and copy to local user bin (no sudo needed):
-tar -xzf cssforge-v0.3.0-linux-x64.tar.gz
-cp cssforge-v0.3.0-linux-x64/cssforge ~/.local/bin/
+tar -xzf cssforge-v0.3.1-linux-x64.tar.gz
+cp cssforge-v0.3.1-linux-x64/cssforge ~/.local/bin/
 chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🍏 macOS (Apple Silicon M-Series)
 ```bash
-tar -xzf cssforge-v0.3.0-macos-arm64.tar.gz
-cp cssforge-v0.3.0-macos-arm64/cssforge ~/.local/bin/
+tar -xzf cssforge-v0.3.1-macos-arm64.tar.gz
+cp cssforge-v0.3.1-macos-arm64/cssforge ~/.local/bin/
 chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🪟 Windows (x64 / ARM64 Snapdragon)
-Extract `cssforge.exe` from `cssforge-v0.3.0-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
+Extract `cssforge.exe` from `cssforge-v0.3.1-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
 
 ---
 

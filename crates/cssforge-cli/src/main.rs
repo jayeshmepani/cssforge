@@ -282,10 +282,10 @@ fn apply_command(
 
     if let Some(report_file) = report_file {
         let json = serde_json::to_string_pretty(&report)?;
-        if let Some(parent) = report_file.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = report_file.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent)?;
         }
         fs::write(&report_file, json)?;
         eprintln!("report: {}", report_file.display());

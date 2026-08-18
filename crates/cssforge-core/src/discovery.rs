@@ -52,12 +52,11 @@ pub fn discover_css_files(root: &Path) -> Result<Vec<PathBuf>> {
         .git_exclude(true)
         .parents(true)
         .filter_entry(|entry| {
-            if entry.file_type().is_some_and(|ft| ft.is_dir()) {
-                if let Some(name) = entry.file_name().to_str() {
-                    if IGNORED_DIRS.iter().any(|d| d.eq_ignore_ascii_case(name)) {
-                        return false;
-                    }
-                }
+            if entry.file_type().is_some_and(|ft| ft.is_dir())
+                && let Some(name) = entry.file_name().to_str()
+                && IGNORED_DIRS.iter().any(|d| d.eq_ignore_ascii_case(name))
+            {
+                return false;
             }
             true
         })
@@ -100,12 +99,11 @@ fn is_eligible_css_file(path: &Path) -> bool {
 
     // Ensure no path component is an ignored dir
     for comp in path.components() {
-        if let std::path::Component::Normal(os_str) = comp {
-            if let Some(s) = os_str.to_str() {
-                if IGNORED_DIRS.iter().any(|d| d.eq_ignore_ascii_case(s)) {
-                    return false;
-                }
-            }
+        if let std::path::Component::Normal(os_str) = comp
+            && let Some(s) = os_str.to_str()
+            && IGNORED_DIRS.iter().any(|d| d.eq_ignore_ascii_case(s))
+        {
+            return false;
         }
     }
 

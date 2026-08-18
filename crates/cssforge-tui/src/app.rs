@@ -201,10 +201,10 @@ impl App {
     }
 
     pub fn toggle_current_plan(&mut self) -> Result<()> {
-        if let Some(plan) = self.current_plan_mut() {
-            if matches!(plan.safety, Safety::Safe | Safety::Review) {
-                plan.selected = !plan.selected;
-            }
+        if let Some(plan) = self.current_plan_mut()
+            && matches!(plan.safety, Safety::Safe | Safety::Review)
+        {
+            plan.selected = !plan.selected;
         }
         self.refresh_diff()
     }

@@ -434,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "cssforge"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -445,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "cssforge-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "ignore",
@@ -458,7 +458,7 @@ dependencies = [
 
 [[package]]
 name = "cssforge-tui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "crossterm",

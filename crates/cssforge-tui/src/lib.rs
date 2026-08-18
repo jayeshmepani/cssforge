@@ -29,10 +29,10 @@ pub fn run(root: PathBuf) -> Result<TuiOutcome> {
 fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()> {
     while !app.should_quit {
         terminal.draw(|frame| ui::draw(frame, app))?;
-        if event::poll(Duration::from_millis(120))? {
-            if let Event::Key(key) = event::read()? {
-                app.handle_key(key)?;
-            }
+        if event::poll(Duration::from_millis(120))?
+            && let Event::Key(key) = event::read()?
+        {
+            app.handle_key(key)?;
         }
     }
     Ok(())
