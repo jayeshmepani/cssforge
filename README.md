@@ -114,12 +114,24 @@ For complete interactive visual examples of each rule, visit the [Documentation 
 
 ---
 
-## 🔒 Safety Guarantees
+## 🔒 Safety Guarantees & Why CSSForge
 
-1. **Zero Declaration Loss**: 100% of property names, values, custom properties, and `!important` flags are preserved.
-2. **Surgical Byte-Range Preservation**: Untouched stylesheet lines and formatting are never altered.
-3. **8-Point Proof Engine**: Evaluates specificity invariants, cascade boundaries, and layer precedence before applying mutations.
-4. **Git Dirty-Tree Guard**: In-place destructive overwrite is blocked if uncommitted Git changes are detected.
+Unlike lowering tools (e.g. LightningCSS, esbuild) or destructive minifiers (e.g. cssnano), CSSForge is built strictly for **lossless forward semantic modernization**:
+
+* **🛡️ Dual-Layer Zero-Regression Engine**: LightningCSS validates the AST, but a surgical Byte Patch Engine mutates only the targeted byte ranges. Untouched lines, developer comments, custom indentation, and quote styles remain 100% byte-for-byte identical.
+* **🔬 Mathematical Proof Engine**: Calculates exact specificity vectors `(a, b, c)` with zero specificity drift guarantees.
+* **🚫 Refusal as a Safety Feature**: Refuses transformations that would break CSS matching (such as `:is()` specificity inflation on lower branches).
+* **✨ Multi-Selector Cluster Factoring**: Automatically factors multi-branch rules sharing identical bases into clean `:is()` blocks with nested children.
+* **🔒 Git Dirty-Tree Guard**: Blocks destructive in-place replacements if uncommitted Git changes are detected.
+
+---
+
+## 🚫 Strict Non-Goals (What We Do NOT & Will NOT Do)
+
+* ❌ **No BEM String Concatenation (`&__element`)**: Native CSS `&` is a selector token (desugars to `:is()`), NOT a Sass string concatenator. Writing `.card { &__title { } }` is invalid in native CSS.
+* ❌ **No Specificity Inflation / Lifting**: If wrapping parent selectors in `:is()` would artificially lift the specificity of a lower-specificity branch and alter cascade priority, CSSForge refuses the refactor.
+* ❌ **No Destructive Re-Serialization**: We never re-format untouched code, strip comments, convert colors, or drop intentional browser fallback duplicate declarations.
+* ❌ **No Unsound At-Rule Moving Across Barriers**: We never hoist `@media` / `@supports` blocks across intervening selector barriers if moving them would invert the cascade.
 
 ---
 

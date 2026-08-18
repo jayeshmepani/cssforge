@@ -129,6 +129,9 @@
       <ul class="nav-list">
         <li><a href="#rules">26 Rules Catalog</a></li>
         <li><a href="#safety-proof">8-Point Proof Engine</a></li>
+        <li><a href="#why-cssforge">Why CSSForge &amp; Gaps Filled</a></li>
+        <li><a href="#non-goals">Strict Non-Goals</a></li>
+        <li><a href="#market-comparison">Market Comparison</a></li>
         <li><a href="#output-modes">7 Output Modes</a></li>
         <li><a href="#crates">Workspace Crates</a></li>
       </ul>
@@ -734,6 +737,198 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <tr>
                 <td><code>syntax_lossless</code></td>
                 <td>Splices replacements strictly into target byte spans. Untouched lines remain 100% byte-for-byte identical.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Why CSSForge & Gaps Filled -->
+      <section id="why-cssforge">
+        <h2>💡 Why CSSForge? &amp; The Gaps We Filled</h2>
+        <p>The CSS tooling ecosystem has long suffered from a structural asymmetry:</p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Direction</th>
+                <th>Ecosystem State</th>
+                <th>Existing Tools</th>
+                <th>The Dilemma</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Nested ➔ Flat Lowering</strong></td>
+                <td><span class="badge badge-safe">Mature</span></td>
+                <td>Lightning CSS, PostCSS Nesting, esbuild, LibSass</td>
+                <td>Deterministic, mechanical compiler lowering. Desugaring <code>&</code> into flat rules or <code>:is()</code> is grammatically straightforward.</td>
+              </tr>
+              <tr>
+                <td><strong>Flat ➔ Modern Nested</strong></td>
+                <td><span class="badge badge-refactor">Fragmented</span></td>
+                <td>NestYourCSS, stylelint-use-nesting, css-nesting-converter</td>
+                <td>Cascade-sensitive refactoring problem. Existing tools either produce invalid CSS, break specificity, destroy code formatting, or only fold basic <code>:hover</code> states.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Critical Gaps Solved by CSSForge</h3>
+        <div class="benefits-grid">
+          <div class="benefit-card">
+            <div class="benefit-icon">🛡️</div>
+            <div class="benefit-title">Dual-Layer Zero-Regression Engine</div>
+            <div class="benefit-desc">LightningCSS AST parser is used purely for grammatical validation. All file mutations are performed by a surgical Byte Patch Engine that replaces strictly target byte spans. Untouched lines, developer comments, custom indentation, and quote styles remain 100% byte-for-byte identical.</div>
+          </div>
+
+          <div class="benefit-card">
+            <div class="benefit-icon">🔬</div>
+            <div class="benefit-title">Mathematical Specificity Proofs</div>
+            <div class="benefit-desc">Calculates exact specificity vectors <code>(a, b, c)</code> for every input and modernized selector branch. Zero specificity drift guarantee ensures elements match with identical priority across browsers.</div>
+          </div>
+
+          <div class="benefit-card">
+            <div class="benefit-icon">🚫</div>
+            <div class="benefit-title">Refusal as a Core Safety Feature</div>
+            <div class="benefit-desc">When an AST transform would violate native CSS semantics (such as <code>:is()</code> lifting specificity on lower branches or invalid BEM string concatenation), CSSForge explicitly refuses the transformation instead of generating broken stylesheets.</div>
+          </div>
+
+          <div class="benefit-card">
+            <div class="benefit-icon">✨</div>
+            <div class="benefit-title">Multi-Selector Cluster Factoring</div>
+            <div class="benefit-desc">The first and only tool capable of gathering multi-branch rules sharing identical bases (e.g. <code>.card .title, #hero .title</code> + <code>.card, #hero</code>) into unified, clean <code>:is()</code> blocks with nested children.</div>
+          </div>
+
+          <div class="benefit-card">
+            <div class="benefit-icon">🖥️</div>
+            <div class="benefit-title">Zero-Config Terminal TUI Workbench</div>
+            <div class="benefit-desc">A full-screen, responsive keyboard-driven interactive workbench powered by Ratatui &amp; Crossterm with live unified diff viewing (<code>[d]</code>), preset cycling (<code>[p]</code>), and 4-step guided refactoring.</div>
+          </div>
+
+          <div class="benefit-card">
+            <div class="benefit-icon">🔒</div>
+            <div class="benefit-title">Dirty Git Working Tree Guard</div>
+            <div class="benefit-desc">Detects uncommitted Git modifications before writing and automatically blocks destructive in-place replacements unless explicitly confirmed by the user.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Strict Non-Goals -->
+      <section id="non-goals">
+        <h2>🚫 Strict Non-Goals: What We Do NOT &amp; Will NOT Do</h2>
+        <p>To preserve 100% cascade safety and developer trust, CSSForge enforces clear architectural boundaries and will never attempt unsound heuristics:</p>
+
+        <div class="non-goals-grid">
+          <div class="non-goal-card">
+            <div class="non-goal-header">
+              <span class="non-goal-badge">❌ Anti-Goal</span>
+              <h4>No BEM String Concatenation (<code>&amp;__element</code>)</h4>
+            </div>
+            <p>In native CSS, <code>&</code> is a selector token (desugars to <code>:is()</code>), <strong>NOT a Sass string concatenator</strong>. Writing <code>.card { &__title { } }</code> is invalid in native CSS. CSSForge strictly refuses BEM token concatenation.</p>
+          </div>
+
+          <div class="non-goal-card">
+            <div class="non-goal-header">
+              <span class="non-goal-badge">❌ Anti-Goal</span>
+              <h4>No Specificity Inflation / Lifting</h4>
+            </div>
+            <p><code>:is(A, B)</code> takes the maximum specificity of all branches. If wrapping rules into <code>:is()</code> would artificially lift the specificity of a lower-specificity branch and alter cascade matching priority, CSSForge refuses the refactor.</p>
+          </div>
+
+          <div class="non-goal-card">
+            <div class="non-goal-header">
+              <span class="non-goal-badge">❌ Anti-Goal</span>
+              <h4>No Destructive Minification or Re-Serialization</h4>
+            </div>
+            <p>CSSForge is a <strong>semantic modernizer, not a destructive minifier</strong>. We will never re-format untouched code, strip developer comments, convert colors, or drop intentional browser fallback duplicate declarations.</p>
+          </div>
+
+          <div class="non-goal-card">
+            <div class="non-goal-header">
+              <span class="non-goal-badge">❌ Anti-Goal</span>
+              <h4>No Pseudo-Element Nesting Traps</h4>
+            </div>
+            <p>Native CSS <code>&</code> cannot legally nest under parent selectors containing pseudo-elements (e.g. <code>::before</code>, <code>::after</code>, <code>::marker</code>). CSSForge strictly identifies and prevents invalid pseudo-element nesting.</p>
+          </div>
+
+          <div class="non-goal-card">
+            <div class="non-goal-header">
+              <span class="non-goal-badge">❌ Anti-Goal</span>
+              <h4>No Arbitrary At-Rule Moving Across Barriers</h4>
+            </div>
+            <p>We will never hoist or pack <code>@media</code> / <code>@supports</code> blocks across intervening selector barriers if moving them would invert the source-order cascade for overlapping properties.</p>
+          </div>
+
+          <div class="non-goal-card">
+            <div class="non-goal-header">
+              <span class="non-goal-badge">❌ Anti-Goal</span>
+              <h4>No Runtime Heuristic Guesswork</h4>
+            </div>
+            <p>We do not guess at runtime JavaScript class additions or dynamically toggled DOM hierarchies. All refactoring operations are statically verifiable and mathematically provable.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Market Comparison Matrix -->
+      <section id="market-comparison">
+        <h2>📊 Global Market Comparison Matrix</h2>
+        <p>A comprehensive architectural comparison of CSSForge against existing industry tools:</p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Tool / Project</th>
+                <th>Primary Focus</th>
+                <th>Strengths</th>
+                <th>Critical Gaps &amp; Weaknesses</th>
+                <th>CSSForge Advantage</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Lightning CSS</strong><br><em>(Parcel / Rust)</em></td>
+                <td>Nested ➔ Flat &amp; Lowering</td>
+                <td>Blazing fast (2.7M lines/s), browser-target aware.</td>
+                <td>Not an aesthetic refactorer. Does not modernize flat CSS to nested CSS; reserializes entire AST.</td>
+                <td><span class="badge badge-safe">Lossless Modernizer</span> Dual-layer patch engine preserving untouched lines &amp; comments.</td>
+              </tr>
+              <tr>
+                <td><strong>NestYourCSS</strong><br><em>(@nycss)</em></td>
+                <td>Flat ⇄ Nested</td>
+                <td>Balanced/Max depth strategies, Web GUI + CLI.</td>
+                <td>Uses character lexer without semantic proof engine; cannot prove non-adjacent safety or at-rule safety.</td>
+                <td><span class="badge badge-safe">Mathematical Proofs</span> Full 8-point invariant proof engine with zero specificity drift.</td>
+              </tr>
+              <tr>
+                <td><strong>stylelint-use-nesting</strong><br><em>(CSSTools)</em></td>
+                <td>Flat ➔ Nested Linter</td>
+                <td>Safe, incremental autofix.</td>
+                <td>Narrow scope: only folds immediate adjacent pseudo-classes (<code>:hover</code>). No <code>:is()</code> factoring or at-rule restructuring.</td>
+                <td><span class="badge badge-safe">26 Rules Catalog</span> Handles complex combinators, multi-branch clustering, and at-rule merging.</td>
+              </tr>
+              <tr>
+                <td><strong>css-nesting-converter</strong></td>
+                <td>Flat ⇄ Nested CLI</td>
+                <td>PostCSS plugin, layer wrapping.</td>
+                <td>Strips SCSS variables blindly; lacks specificity verification and cluster factoring.</td>
+                <td><span class="badge badge-safe">Safe Clustering</span> Preserves all variables, prefixes, and declarations with zero loss.</td>
+              </tr>
+              <tr>
+                <td><strong>postcss-nested</strong><br><em>(Evil Martians)</em></td>
+                <td>Nested ➔ Flat (Sass-like)</td>
+                <td>14M+ weekly downloads, popular in build setups.</td>
+                <td>Violates native CSS semantics. Employs Sass-style string concatenation rather than <code>:is()</code> tokens.</td>
+                <td><span class="badge badge-safe">Native W3C Standard</span> Strictly emits spec-compliant native CSS nesting and modern selectors.</td>
+              </tr>
+              <tr>
+                <td><strong>cssnano</strong></td>
+                <td>Minification</td>
+                <td>Merges adjacent rules, discards dead code.</td>
+                <td>Destructive by default: drops comments, strips intentional duplicate fallback declarations.</td>
+                <td><span class="badge badge-safe">Lossless Refactoring</span> Retains duplicate declarations, custom properties, and fallback fall-throughs.</td>
               </tr>
             </tbody>
           </table>

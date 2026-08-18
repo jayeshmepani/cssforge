@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 2000);
   }
 
-  // ── 2.1. Universal Custom Select Dropdown Controller ──
+  // ── 2.1. Universal Accessible Custom Select Dropdown Controller ──
   function setupCustomSelects() {
     document.querySelectorAll('select.custom-select').forEach(select => {
       if (select.closest('.custom-select-wrapper')) return;
@@ -82,6 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
       dropdown.className = 'custom-select-dropdown';
       dropdown.setAttribute('role', 'listbox');
 
+      let focusedIndex = select.selectedIndex >= 0 ? select.selectedIndex : 0;
+
       function buildOptions() {
         dropdown.innerHTML = '';
         Array.from(select.options).forEach((opt, idx) => {
@@ -90,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
           item.setAttribute('role', 'option');
           item.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
           item.dataset.value = opt.value;
+          item.tabIndex = -1;
 
           const textSpan = document.createElement('span');
           textSpan.className = 'option-text';
@@ -104,14 +107,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
           item.addEventListener('click', (e) => {
             e.stopPropagation();
-            select.selectedIndex = idx;
-            label.textContent = opt.text;
-            closeAllSelects();
-            select.dispatchEvent(new Event('change', { bubbles: true }));
-            updateSelectedState();
+            selectOption(idx);
+          });
+
+          item.addEventListener('mouseenter', () => {
+            setFocusedOption(idx);
           });
 
           dropdown.appendChild(item);
+        });
+      }
+
+      function selectOption(idx) {
+        select.selectedIndex = idx;
+        focusedIndex = idx;
+        label.textContent = select.options[idx]?.text || '';
+        closeAllSelects();
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        updateSelectedState();
+        trigger.focus();
+      }
+
+      function setFocusedOption(idx) {
+        focusedIndex = idx;
+        dropdown.querySelectorAll('.custom-select-option').forEach((item, i) => {
+          item.classList.toggle('is-focused', i === idx);
         });
       }
 
@@ -127,14 +147,65 @@ document.addEventListener('DOMContentLoaded', () => {
       buildOptions();
       wrapper.appendChild(dropdown);
 
+      function openDropdown() {
+        closeAllSelects();
+        trigger.classList.add('is-open');
+        trigger.setAttribute('aria-expanded', 'true');
+        dropdown.classList.add('is-open');
+        setFocusedOption(select.selectedIndex >= 0 ? select.selectedIndex : 0);
+      }
+
+      function closeDropdown() {
+        trigger.classList.remove('is-open');
+        trigger.setAttribute('aria-expanded', 'false');
+        dropdown.classList.remove('is-open');
+      }
+
       trigger.addEventListener('click', (e) => {
         e.stopPropagation();
         const isOpen = trigger.classList.contains('is-open');
-        closeAllSelects();
-        if (!isOpen) {
-          trigger.classList.add('is-open');
-          trigger.setAttribute('aria-expanded', 'true');
-          dropdown.classList.add('is-open');
+        if (isOpen) {
+          closeDropdown();
+        } else {
+          openDropdown();
+        }
+      });
+
+      // Keyboard Navigation on Trigger
+      trigger.addEventListener('keydown', (e) => {
+        const isOpen = trigger.classList.contains('is-open');
+        const count = select.options.length;
+
+        if (e.key === 'ArrowDown' || e.key === 'Down') {
+          e.preventDefault();
+          if (!isOpen) {
+            openDropdown();
+          } else {
+            focusedIndex = (focusedIndex + 1) % count;
+            setFocusedOption(focusedIndex);
+          }
+        } else if (e.key === 'ArrowUp' || e.key === 'Up') {
+          e.preventDefault();
+          if (!isOpen) {
+            openDropdown();
+          } else {
+            focusedIndex = (focusedIndex - 1 + count) % count;
+            setFocusedOption(focusedIndex);
+          }
+        } else if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (isOpen) {
+            selectOption(focusedIndex);
+          } else {
+            openDropdown();
+          }
+        } else if (e.key === 'Escape' || e.key === 'Esc') {
+          if (isOpen) {
+            e.preventDefault();
+            closeDropdown();
+          }
+        } else if (e.key === 'Tab') {
+          closeDropdown();
         }
       });
 
@@ -288,6 +359,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const text = link.textContent.toLowerCase();
         link.parentElement.style.display = text.includes(q) ? 'block' : 'none';
       });
+    });
+  }
+
   // ── 8. ScrollSpy for Sidebar Active Anchor ──
   const sections = Array.from(document.querySelectorAll('section[id]'));
   window.addEventListener('scroll', () => {
