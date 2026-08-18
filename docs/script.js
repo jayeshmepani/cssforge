@@ -102,8 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
           checkSpan.className = 'option-check';
           checkSpan.textContent = '✓';
 
-          item.appendChild(textSpan);
           item.appendChild(checkSpan);
+          item.appendChild(textSpan);
 
           item.addEventListener('click', (e) => {
             e.stopPropagation();
