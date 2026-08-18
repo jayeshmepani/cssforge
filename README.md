@@ -39,20 +39,39 @@ Download from [GitHub Releases](https://github.com/jayeshmepani/cssforge/release
 #### 🐧 Linux (x64 / ARM64)
 ```bash
 # Extract and copy to local user bin (no sudo needed):
-tar -xzf cssforge-v0.2.0-linux-x64.tar.gz
-cp cssforge-v0.2.0-linux-x64/cssforge ~/.local/bin/
+tar -xzf cssforge-v0.2.1-linux-x64.tar.gz
+cp cssforge-v0.2.1-linux-x64/cssforge ~/.local/bin/
 chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🍏 macOS (Apple Silicon M-Series)
 ```bash
-tar -xzf cssforge-v0.2.0-macos-arm64.tar.gz
-sudo cp cssforge-v0.2.0-macos-arm64/cssforge /usr/local/bin/
-chmod +x /usr/local/bin/cssforge
+tar -xzf cssforge-v0.2.1-macos-arm64.tar.gz
+cp cssforge-v0.2.1-macos-arm64/cssforge ~/.local/bin/
+chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🪟 Windows (x64 / ARM64 Snapdragon)
-Extract `cssforge.exe` from `cssforge-v0.2.0-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
+Extract `cssforge.exe` from `cssforge-v0.2.1-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
+
+---
+
+## 📁 Smart File Discovery & Default Ignored Conventions
+
+When executing `cssforge` without arguments in any project directory (`.`), CSSForge automatically scans for human-authored `.css` files while applying **zero-config safe discovery rules**:
+
+### 🚫 Automatically Ignored Directories & Purposes
+* `node_modules/`, `vendor/` — Third-party dependencies that should never be mutated by local refactoring tools.
+* `target/`, `dist/`, `build/`, `out/`, `.next/`, `.nuxt/`, `.turbo/`, `.svelte-kit/` — Ephemeral build and bundler output artifacts.
+* `.git/`, `.hg/`, `.svn/`, `.cache/` — Version control internals and compiler caches.
+
+### 🚫 Automatically Ignored File Patterns & Purposes
+* `*.modern.css` — Generated CSSForge output files (prevents infinite recursion loops).
+* `*.min.css`, `*.bundle.css`, `*.chunk.css` — Minified/bundled CSS where identifiers and structures are intentionally mangled and not meant for source AST nesting.
+* `*.bak.css`, `*.backup.css` — Safety backup files created prior to in-place overwrites.
+* `*.map.css` — Source map artifacts.
+
+> **Tip (Explicit Target Override)**: If you explicitly specify a file path (e.g. `cssforge interactive ./dist/bundle.min.css`), CSSForge will directly process the requested file. Standard `.gitignore` rules are also natively respected.
 
 ---
 

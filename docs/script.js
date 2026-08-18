@@ -284,20 +284,47 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ── 5. OS Installation Tabs ──
+  // ── 5. OS Installation Tabs (WAI-ARIA Tab Pattern) ──
   document.querySelectorAll('.tab-container').forEach(container => {
-    const buttons = container.querySelectorAll('.tab-btn');
-    const panes = container.querySelectorAll('.tab-pane');
+    const buttons = Array.from(container.querySelectorAll('.tab-btn'));
+    const panes = Array.from(container.querySelectorAll('.tab-pane'));
 
-    buttons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const target = btn.dataset.tab;
-        buttons.forEach(b => b.classList.remove('active'));
-        panes.forEach(p => p.classList.remove('active'));
+    function activateTab(btn) {
+      const target = btn.dataset.tab;
+      buttons.forEach(b => {
+        const isCurrent = b === btn;
+        b.classList.toggle('active', isCurrent);
+        b.setAttribute('aria-selected', isCurrent ? 'true' : 'false');
+        b.tabIndex = isCurrent ? 0 : -1;
+      });
 
-        btn.classList.add('active');
-        const activePane = container.querySelector(`.tab-pane[data-tab="${target}"]`);
-        if (activePane) activePane.classList.add('active');
+      panes.forEach(p => {
+        const isCurrent = p.dataset.tab === target;
+        p.classList.toggle('active', isCurrent);
+        p.hidden = !isCurrent;
+      });
+    }
+
+    buttons.forEach((btn, idx) => {
+      btn.addEventListener('click', () => activateTab(btn));
+
+      btn.addEventListener('keydown', (e) => {
+        let newIdx = idx;
+        if (e.key === 'ArrowRight' || e.key === 'Right') {
+          newIdx = (idx + 1) % buttons.length;
+        } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
+          newIdx = (idx - 1 + buttons.length) % buttons.length;
+        } else if (e.key === 'Home') {
+          newIdx = 0;
+        } else if (e.key === 'End') {
+          newIdx = buttons.length - 1;
+        } else {
+          return;
+        }
+
+        e.preventDefault();
+        buttons[newIdx].focus();
+        activateTab(buttons[newIdx]);
       });
     });
   });
@@ -307,19 +334,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const ruleCategorySelect = document.getElementById('rule-category-select');
   const categoryPills = document.querySelectorAll('.pill-btn');
   const ruleCards = document.querySelectorAll('.rule-card');
+  const liveRegion = document.getElementById('rule-search-live');
   let activeCategory = 'all';
 
   function filterRules() {
     const query = ruleSearchInput ? ruleSearchInput.value.toLowerCase().trim() : '';
+    let visibleCount = 0;
 
     ruleCards.forEach(card => {
       const category = card.dataset.category || 'all';
       const text = card.textContent.toLowerCase();
       const matchesCategory = activeCategory === 'all' || category === activeCategory;
       const matchesQuery = !query || text.includes(query);
+      const isVisible = matchesCategory && matchesQuery;
 
-      card.style.display = matchesCategory && matchesQuery ? 'block' : 'none';
+      card.style.display = isVisible ? 'block' : 'none';
+      if (isVisible) visibleCount++;
     });
+
+    if (liveRegion) {
+      liveRegion.textContent = `Showing ${visibleCount} of ${ruleCards.length} transformation rules`;
+    }
   }
 
   if (ruleSearchInput) {

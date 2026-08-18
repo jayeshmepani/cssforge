@@ -9,6 +9,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
+  <!-- Theme Color & Mobile Chrome -->
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f17">
+
   <!-- SEO -->
   <title>CSSForge Documentation — Forward Semantic CSS Refactoring & Modernization Engine</title>
   <meta name="description" content="Official documentation for CSSForge — lossless, 100% cascade-safe, multi-platform semantic CSS refactoring engine and interactive terminal workbench written in Rust.">
@@ -42,11 +46,19 @@
     "@context": "https://schema.org",
     "@graph": [
       {
-        "@type": "SoftwareSourceCode",
+        "@type": "SoftwareApplication",
         "name": "CSSForge",
-        "codeRepository": "https://github.com/jayeshmepani/cssforge",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux, macOS, Windows",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
         "url": "https://jayeshmepani.github.io/cssforge/",
-        "description": "Safety-first, lossless semantic CSS refactoring and modernization engine and interactive TUI workbench written in Rust.",
+        "downloadUrl": "https://crates.io/crates/cssforge",
+        "softwareVersion": "0.2.1",
+        "description": "Lossless, 100% cascade-safe, multi-platform semantic CSS refactoring engine and interactive terminal workbench written in Rust.",
         "programmingLanguage": "Rust",
         "license": "https://opensource.org/licenses/MIT",
         "author": {
@@ -87,7 +99,7 @@
       <a href="#overview" class="brand">
         <div class="brand-logo">CF</div>
         <span class="brand-title">CSSForge</span>
-        <span class="version-badge">v0.2.0</span>
+        <span class="version-badge">v0.2.1</span>
       </a>
     </div>
 
@@ -183,50 +195,43 @@
         <p>Install CSSForge globally across all major platforms using Cargo or download pre-compiled standalone binary releases:</p>
 
         <div class="tab-container">
-          <div class="tab-buttons">
-            <button type="button" class="tab-btn active" data-tab="cargo">Cargo (All Platforms)</button>
-            <button type="button" class="tab-btn" data-tab="linux">Linux (x64 / ARM64)</button>
-            <button type="button" class="tab-btn" data-tab="macos">macOS (Apple Silicon)</button>
-            <button type="button" class="tab-btn" data-tab="windows">Windows (x64 / Snapdragon)</button>
+          <div class="tab-buttons" role="tablist" aria-label="Installation platform options">
+            <button type="button" class="tab-btn active" role="tab" id="tab-cargo" aria-selected="true" aria-controls="pane-cargo" data-tab="cargo">Cargo (All Platforms)</button>
+            <button type="button" class="tab-btn" role="tab" id="tab-linux" aria-selected="false" aria-controls="pane-linux" data-tab="linux">Linux (x64 / ARM64)</button>
+            <button type="button" class="tab-btn" role="tab" id="tab-macos" aria-selected="false" aria-controls="pane-macos" data-tab="macos">macOS (Apple Silicon)</button>
+            <button type="button" class="tab-btn" role="tab" id="tab-windows" aria-selected="false" aria-controls="pane-windows" data-tab="windows">Windows (x64 / Snapdragon)</button>
           </div>
 
           <!-- Cargo Pane -->
-          <div class="tab-pane active" data-tab="cargo">
+          <div class="tab-pane active" role="tabpanel" id="pane-cargo" aria-labelledby="tab-cargo" data-tab="cargo">
             <p>If you have Rust installed, install CSSForge directly from crates.io:</p>
             <pre><code>cargo install cssforge</code></pre>
             <p>This places <code>cssforge</code> directly into your <code>~/.cargo/bin</code> directory.</p>
           </div>
 
           <!-- Linux Pane -->
-          <div class="tab-pane" data-tab="linux">
+          <div class="tab-pane" role="tabpanel" id="pane-linux" aria-labelledby="tab-linux" data-tab="linux">
             <p>1. Download the archive for your architecture from <a href="https://github.com/jayeshmepani/cssforge/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
-            <p>2. Extract and copy to your user binary path (no <code>sudo</code> required):</p>
-            <pre><code># Extract archive:
-tar -xzf cssforge-v0.2.0-linux-x64.tar.gz
-
-# Move binary to local user PATH:
-cp cssforge-v0.2.0-linux-x64/cssforge ~/.local/bin/
-chmod +x ~/.local/bin/cssforge
-
-# Verify:
-cssforge --version</code></pre>
+            <p>2. Extract and copy to your local user binary directory (no <code>sudo</code> required):</p>
+            <pre><code>tar -xvf cssforge-v0.2.1-linux-x64.tar.gz
+cp cssforge-v0.2.1-linux-x64/cssforge ~/.local/bin/
+chmod +x ~/.local/bin/cssforge</code></pre>
+            <p>3. Verify installation: <code>cssforge --version</code></p>
           </div>
 
           <!-- macOS Pane -->
-          <div class="tab-pane" data-tab="macos">
-            <p>1. Download <code>cssforge-v0.2.0-macos-arm64.tar.gz</code> from <a href="https://github.com/jayeshmepani/cssforge/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
-            <pre><code># Extract and copy to /usr/local/bin:
-tar -xzf cssforge-v0.2.0-macos-arm64.tar.gz
-sudo cp cssforge-v0.2.0-macos-arm64/cssforge /usr/local/bin/
-chmod +x /usr/local/bin/cssforge
-
-# Verify:
-cssforge --version</code></pre>
+          <div class="tab-pane" role="tabpanel" id="pane-macos" aria-labelledby="tab-macos" data-tab="macos">
+            <p>1. Download <code>cssforge-v0.2.1-macos-arm64.tar.gz</code> from <a href="https://github.com/jayeshmepani/cssforge/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
+            <p>2. Extract and copy to user path:</p>
+            <pre><code>tar -xvf cssforge-v0.2.1-macos-arm64.tar.gz
+cp cssforge-v0.2.1-macos-arm64/cssforge ~/.local/bin/
+chmod +x ~/.local/bin/cssforge</code></pre>
+            <p>3. Verify installation: <code>cssforge --version</code></p>
           </div>
 
           <!-- Windows Pane -->
-          <div class="tab-pane" data-tab="windows">
-            <p>1. Download <code>cssforge-v0.2.0-windows-x64.zip</code> or <code>cssforge-v0.2.0-windows-arm64.zip</code>.</p>
+          <div class="tab-pane" role="tabpanel" id="pane-windows" aria-labelledby="tab-windows" data-tab="windows">
+            <p>1. Download <code>cssforge-v0.2.1-windows-x64.zip</code> or <code>cssforge-v0.2.1-windows-arm64.zip</code> from <a href="https://github.com/jayeshmepani/cssforge/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
             <p>2. Extract <code>cssforge.exe</code> and add its folder to your system <code>Path</code>.</p>
             <pre><code># In PowerShell or CMD:
 cssforge.exe --version</code></pre>
@@ -265,6 +270,19 @@ cssforge apply ./src/app.css --preset modern --output new-file
 
 # In-place overwrite with automatic safety backup (.bak):
 cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
+
+        <div class="callout-card" style="margin-top: 2rem;">
+          <h3>📁 Smart File Discovery &amp; Default Ignored Conventions</h3>
+          <p>When scanning directories recursively, CSSForge applies <strong>zero-config safety ignore filters</strong> to prevent accidental corruption of generated files or vendor libraries:</p>
+          <ul style="margin: 0.75rem 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: var(--text-sm);">
+            <li><strong>Build &amp; Dependency Folders</strong> (<code>node_modules/</code>, <code>vendor/</code>, <code>target/</code>, <code>dist/</code>, <code>build/</code>, <code>out/</code>, <code>.next/</code>, <code>.nuxt/</code>, <code>.turbo/</code>, <code>.svelte-kit/</code>): Ignored to protect compiled bundles and 3rd-party dependencies.</li>
+            <li><strong>Version Control Internals</strong> (<code>.git/</code>, <code>.hg/</code>, <code>.svn/</code>, <code>.cache/</code>): Ignored to keep repo metadata safe.</li>
+            <li><strong>Generated Modern Files</strong> (<code>*.modern.css</code>): Ignored to prevent recursive re-modernization loops on newly generated output.</li>
+            <li><strong>Minified &amp; Chunks</strong> (<code>*.min.css</code>, <code>*.bundle.css</code>, <code>*.chunk.css</code>, <code>*.map.css</code>): Ignored because minified code is not meant for source AST refactoring.</li>
+            <li><strong>Safety Backups</strong> (<code>*.bak.css</code>, <code>*.backup.css</code>): Preserved as untouched recovery snapshots.</li>
+          </ul>
+          <p style="margin-top: 0.75rem; font-size: var(--text-xs); color: var(--text-secondary);"><em>Note: If you explicitly pass a file path (e.g. <code>cssforge interactive ./dist/custom.min.css</code>), CSSForge honors your explicit request. Standard <code>.gitignore</code> and <code>.ignore</code> files are also respected automatically.</em></p>
+        </div>
       </section>
 
       <!-- Terminal Simulator -->
@@ -349,6 +367,7 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <button type="button" class="pill-btn" data-category="dedupe">Deduplication &amp; Pruning (5)</button>
             </div>
           </div>
+          <div id="rule-search-live" class="sr-only" aria-live="polite" aria-atomic="true">Showing all 26 transformation rules</div>
         </div>
 
         <div class="rules-grid">
@@ -1008,19 +1027,19 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
             <tbody>
               <tr>
                 <td><strong><code>cssforge</code></strong></td>
-                <td><a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener">v0.2.0</a></td>
+                <td><a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener">v0.2.1</a></td>
                 <td><a href="https://docs.rs/cssforge" target="_blank" rel="noopener">Docs.rs</a></td>
                 <td>Standalone multi-platform CLI and TUI workbench executable.</td>
               </tr>
               <tr>
                 <td><strong><code>cssforge-core</code></strong></td>
-                <td><a href="https://crates.io/crates/cssforge-core" target="_blank" rel="noopener">v0.2.0</a></td>
+                <td><a href="https://crates.io/crates/cssforge-core" target="_blank" rel="noopener">v0.2.1</a></td>
                 <td><a href="https://docs.rs/cssforge-core" target="_blank" rel="noopener">Docs.rs</a></td>
                 <td>Pure Rust AST parser, specificity engine, and 26 transformation rules library.</td>
               </tr>
               <tr>
                 <td><strong><code>cssforge-tui</code></strong></td>
-                <td><a href="https://crates.io/crates/cssforge-tui" target="_blank" rel="noopener">v0.2.0</a></td>
+                <td><a href="https://crates.io/crates/cssforge-tui" target="_blank" rel="noopener">v0.2.1</a></td>
                 <td><a href="https://docs.rs/cssforge-tui" target="_blank" rel="noopener">Docs.rs</a></td>
                 <td>Ratatui-powered terminal user interface component and visual diff viewer.</td>
               </tr>
