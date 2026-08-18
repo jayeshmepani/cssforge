@@ -10,8 +10,6 @@
 
 **CSSForge** is a safety-first, lossless semantic CSS refactoring engine and interactive terminal workbench written in Rust. It modernizes flat legacy CSS into native nesting, Range media queries, `:is()` factoring, and `@layer` consolidation with **zero declaration loss** and byte-range surgical precision.
 
-📖 **Full Interactive Documentation & Rules Catalog**: [https://jayeshmepani.github.io/cssforge/](https://jayeshmepani.github.io/cssforge/) *(or open `docs/index.html` locally)*.
-
 ---
 
 ## 📦 Published Workspace Crates
