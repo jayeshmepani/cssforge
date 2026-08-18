@@ -1,9 +1,15 @@
 [package]
 name = "cssforge-core"
+description = "Core semantic analysis and lossless refactoring engine for CSSForge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["css", "refactoring", "nesting", "modernize", "ast"]
+categories = ["development-tools", "command-line-utilities", "web-programming"]
 
 [dependencies]
 anyhow.workspace = true

@@ -1,12 +1,18 @@
 [package]
 name = "cssforge-tui"
+description = "Interactive terminal workbench interface for CSSForge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["css", "tui", "ratatui", "terminal", "workbench"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 anyhow.workspace = true
 crossterm.workspace = true
-cssforge-core = { path = "../cssforge-core" }
+cssforge-core = { path = "../cssforge-core", version = "0.2.0" }
 ratatui.workspace = true
