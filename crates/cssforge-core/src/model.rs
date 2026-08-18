@@ -366,7 +366,7 @@ pub fn rule_definitions() -> Vec<RuleDefinition> {
             title: "Gather related selector rules",
             category: "Structural Refactoring",
             safety_level: SafetyLevel::SemanticReview,
-            description: "Gather scattered non-adjacent state and child selectors into the canonical parent rule (review required for cascade crossing).",
+            description: "Gather scattered related rules into the strongest existing parent (specificity wins; prefix nest beats appended `&` on a tie). Busy @media/@supports blocks with mixed selectors stay grouped. Review required for cascade crossing.",
         },
         RuleDefinition {
             id: RuleId::PruneOverriddenDeclarations,

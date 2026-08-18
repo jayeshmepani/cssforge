@@ -483,8 +483,8 @@ fn collect_findings(source: &str, nodes: &[SourceNode]) -> Vec<Finding> {
                 }),
                 "scope" => findings.push(Finding {
                     safety: Safety::Review,
-                    title: "Scope context detected".into(),
-                    detail: "@scope adds scope proximity to the cascade; scope architecture remains advisory.".into(),
+                    title: "Scope boundary detected".into(),
+                    detail: "@scope boundaries enforce doughnut scoping; scoping parameters require manual architect review.".into(),
                 }),
                 "container" => findings.push(Finding {
                     safety: Safety::Review,
@@ -502,12 +502,12 @@ fn collect_findings(source: &str, nodes: &[SourceNode]) -> Vec<Finding> {
         }
     }
 
-    for (sel, count) in selector_occurrences {
+    for (selector, count) in selector_occurrences {
         if count > 1 {
             findings.push(Finding {
                 safety: Safety::Review,
                 title: "Duplicate selector in stylesheet".into(),
-                detail: format!("'{sel}' appears {count} times in the stylesheet; non-adjacent occurrences must not be merged across intervening rules."),
+                detail: format!("'{selector}' appears {count} times in the stylesheet; non-adjacent occurrences must not be merged across intervening rules."),
             });
         }
     }
@@ -516,13 +516,19 @@ fn collect_findings(source: &str, nodes: &[SourceNode]) -> Vec<Finding> {
 }
 
 fn bem_base_candidate(selector: &str) -> Option<&str> {
-    let trimmed = selector.trim();
-    let idx = trimmed.find("__").or_else(|| trimmed.find("--"))?;
-    if idx == 0 {
-        None
-    } else {
-        Some(&trimmed[..idx])
+    if let Some(pos) = selector.find("__") {
+        let base = &selector[..pos];
+        if !base.is_empty() && !base.contains(' ') {
+            return Some(base);
+        }
     }
+    if let Some(pos) = selector.find("--") {
+        let base = &selector[..pos];
+        if !base.is_empty() && !base.contains(' ') {
+            return Some(base);
+        }
+    }
+    None
 }
 
 const TRANSPARENT_AT_RULES: &[&str] = &["layer", "scope", "media", "supports", "container"];
@@ -705,7 +711,7 @@ fn build_plans(
                                             let trimmed = line.trim();
                                             if !trimmed.is_empty() {
                                                 extra_rendered.push_str(&inner_decl_indent);
-                                                extra_rendered.push_str(trimmed);
+                                                extra_rendered.push_str(&ensure_semicolon(trimmed));
                                                 extra_rendered.push('\n');
                                             }
                                         }
@@ -972,7 +978,7 @@ fn plan_merge_same_named_layers(
                         let trimmed = line.trim();
                         if !trimmed.is_empty() {
                             merged_body.push_str(&nested_indent);
-                            merged_body.push_str(trimmed);
+                            merged_body.push_str(&ensure_semicolon(trimmed));
                             merged_body.push('\n');
                         }
                     }
@@ -1095,7 +1101,7 @@ fn plan_merge_adjacent_at_blocks(
                             let trimmed = line.trim();
                             if !trimmed.is_empty() {
                                 merged_body.push_str(&nested_indent);
-                                merged_body.push_str(trimmed);
+                                merged_body.push_str(&ensure_semicolon(trimmed));
                                 merged_body.push('\n');
                             }
                         }
@@ -1204,7 +1210,7 @@ fn plan_gather_consecutive_conditions_by_selector(
                                         let trimmed = line.trim();
                                         if !trimmed.is_empty() {
                                             body_out.push_str(&inner_decl_indent);
-                                            body_out.push_str(trimmed);
+                                            body_out.push_str(&ensure_semicolon(trimmed));
                                             body_out.push('\n');
                                         }
                                     }
@@ -1332,7 +1338,7 @@ fn plan_nest_in_place_adjacent_states(
                                 let trimmed = line.trim();
                                 if !trimmed.is_empty() {
                                     out.push_str(&inner_decl_indent);
-                                    out.push_str(trimmed);
+                                    out.push_str(&ensure_semicolon(trimmed));
                                     out.push('\n');
                                 }
                             }
@@ -1472,7 +1478,13 @@ fn parse_rule_body_items(body_str: &str) -> (Vec<String>, Vec<String>) {
                 current_decl.clear();
             } else if b == b'\n' {
                 let trimmed = current_decl.trim();
-                if !trimmed.is_empty() && trimmed.contains(':') && !trimmed.ends_with('{') {
+                // Selector-list continuations (`&:hover,` / `&::before,`) contain `:`
+                // but are not declarations — they must stay attached to the `{` that follows.
+                if !trimmed.is_empty()
+                    && trimmed.contains(':')
+                    && !trimmed.ends_with('{')
+                    && !trimmed.ends_with(',')
+                {
                     let rest = body_str[i + 1..].trim_start();
                     if !rest.starts_with('{') {
                         declarations.push(trimmed.to_string());
@@ -1492,17 +1504,109 @@ fn parse_rule_body_items(body_str: &str) -> (Vec<String>, Vec<String>) {
 
     let trailing_decl = current_decl.trim().to_string();
     if !trailing_decl.is_empty() && trailing_decl.contains(':') {
-        declarations.push(trailing_decl);
+        declarations.push(ensure_semicolon(&trailing_decl).into_owned());
     }
 
     (declarations, nested_rules)
 }
 
-fn extract_related_nested_selector(base: &str, candidate_sel: &str) -> Option<String> {
-    if candidate_sel == base {
+fn is_ident_continue(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '\\'
+}
+
+/// MDN "Appending the `&` nesting selector": reverse the context so the
+/// parent appears as a suffix (`&`) of the nested selector.
+///
+/// `.featured .card` → `.featured &`
+/// `.featured.card`  → `.featured&`
+/// `:not(.card)`     → `:not(&)`
+/// `.foo > .card`    → `.foo > &`
+fn appended_nesting_selector(base: &str, candidate_sel: &str) -> Option<String> {
+    let base = base.trim();
+    let candidate_sel = candidate_sel.trim();
+    if base.is_empty() || candidate_sel == base || contains_top_level_comma(candidate_sel) {
         return None;
     }
-    if !candidate_sel.starts_with(base) {
+
+    const FNS: &[&str] = &[":not(", ":is(", ":where(", ":has("];
+    for fn_name in FNS {
+        let wrapped = format!("{fn_name}{base})");
+        if candidate_sel == wrapped {
+            return Some(format!("{fn_name}&)"));
+        }
+        if let Some(prefix) = candidate_sel.strip_suffix(wrapped.as_str()) {
+            if !prefix.is_empty() {
+                let prev = prefix.chars().last()?;
+                if is_ident_continue(prev)
+                    || prev == '.'
+                    || prev == '#'
+                    || prev == ']'
+                    || prev == ')'
+                    || prev == '*'
+                {
+                    return Some(format!("{prefix}{fn_name}&)"));
+                }
+            }
+        }
+    }
+
+    if !candidate_sel.ends_with(base) {
+        return None;
+    }
+    let prefix = &candidate_sel[..candidate_sel.len() - base.len()];
+    if prefix.is_empty() {
+        return None;
+    }
+    let prev = prefix.chars().last()?;
+    let first_of_base = base.chars().next()?;
+
+    if prev.is_whitespace() || matches!(prev, '>' | '+' | '~') {
+        return Some(format!("{prefix}&"));
+    }
+
+    // Compound join: `.featured.card`, `div.card` — the `.`/`#`/`[`/`:` of
+    // `base` starts a new simple selector, not a mid-ident substring.
+    if matches!(first_of_base, '.' | '#' | '[' | ':')
+        && (is_ident_continue(prev) || prev == ']' || prev == ')' || prev == '*')
+    {
+        return Some(format!("{prefix}&"));
+    }
+
+    None
+}
+
+fn appended_selector_relation(parent: &str, child: &str) -> Option<(RelationKind, String)> {
+    let nested = appended_nesting_selector(parent, child)?;
+    let before_amp = nested.strip_suffix('&').unwrap_or(nested.as_str());
+    let kind = if nested.contains(":not(")
+        || nested.contains(":is(")
+        || nested.contains(":where(")
+        || nested.contains(":has(")
+    {
+        RelationKind::PseudoClass
+    } else if before_amp.contains('>') || before_amp.contains('+') || before_amp.contains('~') {
+        RelationKind::Combinator
+    } else if nested.ends_with('&')
+        && before_amp
+            .chars()
+            .last()
+            .is_some_and(|c| !c.is_whitespace())
+    {
+        RelationKind::Compound
+    } else {
+        RelationKind::Descendant
+    };
+    Some((kind, nested))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RelatedKind {
+    Prefix,
+    Appended,
+}
+
+fn prefix_related_nested_selector(base: &str, candidate_sel: &str) -> Option<String> {
+    if candidate_sel == base || !candidate_sel.starts_with(base) {
         return None;
     }
     let rem_raw = &candidate_sel[base.len()..];
@@ -1517,7 +1621,6 @@ fn extract_related_nested_selector(base: &str, candidate_sel: &str) -> Option<St
         if directly_attached {
             return Some(format!("&{rem}"));
         } else {
-            // Whitespace-separated: descendant combinator, no &
             return Some(rem.to_string());
         }
     }
@@ -1532,11 +1635,273 @@ fn extract_related_nested_selector(base: &str, candidate_sel: &str) -> Option<St
     None
 }
 
+fn classify_related_nested(base: &str, candidate_sel: &str) -> Option<(RelatedKind, String)> {
+    if candidate_sel == base || contains_top_level_comma(candidate_sel) {
+        return None;
+    }
+    if let Some(rel) = prefix_related_nested_selector(base, candidate_sel) {
+        return Some((RelatedKind::Prefix, rel));
+    }
+    appended_nesting_selector(base, candidate_sel).map(|rel| (RelatedKind::Appended, rel))
+}
+
+fn extract_related_nested_selector(base: &str, candidate_sel: &str) -> Option<String> {
+    classify_related_nested(base, candidate_sel).map(|(_, rel)| rel)
+}
+
+fn is_weak_gather_base(base: &str) -> bool {
+    matches!(base.trim(), "*" | "html" | "body" | ":root" | ":host")
+}
+
+fn is_simple_compound_selector(sel: &str) -> bool {
+    let sel = sel.trim();
+    if sel.is_empty()
+        || sel.starts_with('&')
+        || sel.starts_with('+')
+        || sel.starts_with('>')
+        || sel.starts_with('~')
+        || contains_top_level_comma(sel)
+    {
+        return false;
+    }
+    let mut paren = 0usize;
+    let mut brack = 0usize;
+    for c in sel.chars() {
+        match c {
+            '(' => paren += 1,
+            ')' => paren = paren.saturating_sub(1),
+            '[' => brack += 1,
+            ']' => brack = brack.saturating_sub(1),
+            _ if paren == 0 && brack == 0 => {
+                if c.is_whitespace() || matches!(c, '+' | '>' | '~') {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+fn first_compound_stripped(sel: &str) -> Option<&str> {
+    let sel = sel.trim();
+    if sel.is_empty() || sel.starts_with('&') {
+        return None;
+    }
+    let mut paren = 0usize;
+    let mut brack = 0usize;
+    let mut end = sel.len();
+    for (i, c) in sel.char_indices() {
+        match c {
+            '(' => paren += 1,
+            ')' => paren = paren.saturating_sub(1),
+            '[' => brack += 1,
+            ']' => brack = brack.saturating_sub(1),
+            _ if paren == 0 && brack == 0 && (c.is_whitespace() || matches!(c, '+' | '>' | '~' | ',')) => {
+                end = i;
+                break;
+            }
+            _ => {}
+        }
+    }
+    let head = sel[..end].trim();
+    if head.is_empty() || head.starts_with(':') || head.starts_with('[') {
+        return None;
+    }
+    paren = 0;
+    brack = 0;
+    for (i, c) in head.char_indices() {
+        match c {
+            '(' => paren += 1,
+            ')' => paren = paren.saturating_sub(1),
+            '[' if paren == 0 && i > 0 => return Some(&head[..i]),
+            ':' if paren == 0 && brack == 0 && i > 0 => return Some(&head[..i]),
+            _ => {}
+        }
+    }
+    Some(head)
+}
+
+fn style_body_weight(source: &str, node: &SourceNode) -> usize {
+    node.body(source)
+        .map(|b| b.lines().filter(|l| !l.trim().is_empty()).count())
+        .unwrap_or(0)
+}
+
+/// Pick a single gather home for `sel`.
+/// Exact existing rules win by specificity; prefix beats appended on a tie;
+/// virtual stripped compounds (`.skip-link` from `.skip-link:hover`) are last resort.
+fn assign_gather_home<'a>(
+    sel: &str,
+    exact_homes: &[&'a str],
+    home_weight: &HashMap<&'a str, usize>,
+) -> Option<&'a str> {
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    struct Rank {
+        spec: Specificity,
+        is_prefix: bool,
+        weight: usize,
+        len: usize,
+    }
+
+    let mut best: Option<(Rank, &'a str)> = None;
+    let consider = |best: &mut Option<(Rank, &'a str)>, home: &'a str, kind: Option<RelatedKind>| {
+        let is_prefix = matches!(kind, None | Some(RelatedKind::Prefix));
+        if matches!(kind, Some(RelatedKind::Appended)) && is_weak_gather_base(home) {
+            return;
+        }
+        let rank = Rank {
+            spec: calculate_specificity(home),
+            is_prefix,
+            weight: home_weight.get(home).copied().unwrap_or(0),
+            len: home.len(),
+        };
+        if best.as_ref().is_none_or(|(cur, _)| rank > *cur) {
+            *best = Some((rank, home));
+        }
+    };
+
+    for &home in exact_homes {
+        if sel == home || home_weight.get(home).copied().unwrap_or(0) == 0 {
+            continue;
+        }
+        if let Some((kind, _)) = classify_related_nested(home, sel) {
+            consider(&mut best, home, Some(kind));
+        }
+    }
+    if best.is_some() {
+        return best.map(|(_, home)| home);
+    }
+    // No existing rule claimed this selector — fall back to a virtual
+    // stripped compound so `.skip-link:hover` + `.skip-link:focus` can
+    // still wrap under a synthesized `.skip-link`.
+    for &home in exact_homes {
+        if sel == home || home_weight.get(home).copied().unwrap_or(0) != 0 {
+            continue;
+        }
+        if let Some((kind, _)) = classify_related_nested(home, sel) {
+            consider(&mut best, home, Some(kind));
+        }
+    }
+    best.map(|(_, home)| home)
+}
+
+const GATHERABLE_CONDITIONALS: &[&str] = &["media", "supports", "container", "starting-style"];
+
+enum GatherMember<'a> {
+    Style(&'a SourceNode),
+    Conditional {
+        at_node: &'a SourceNode,
+        inner: SourceNode,
+        delete_whole_at_block: bool,
+    },
+}
+
+impl GatherMember<'_> {
+    fn outer_start(&self) -> usize {
+        match self {
+            Self::Style(n) => n.start,
+            Self::Conditional { at_node, .. } => at_node.start,
+        }
+    }
+
+    fn outer_end(&self) -> usize {
+        match self {
+            Self::Style(n) => n.end,
+            Self::Conditional { at_node, .. } => at_node.end,
+        }
+    }
+}
+
+fn extend_with_trailing_newline(source: &str, end: usize) -> usize {
+    if source[end..].starts_with("\r\n") {
+        end + 2
+    } else if source[end..].starts_with('\n') {
+        end + 1
+    } else {
+        end
+    }
+}
+
+fn push_style_member_into_merge(
+    first_sel: &str,
+    cand_sel: &str,
+    body_str: &str,
+    all_decls: &mut Vec<String>,
+    all_nested_rules: &mut Vec<String>,
+) {
+    if cand_sel == first_sel {
+        let (decls, nested) = parse_rule_body_items(body_str);
+        all_decls.extend(decls);
+        all_nested_rules.extend(nested);
+    } else if let Some(rel_sel) = extract_related_nested_selector(first_sel, cand_sel) {
+        let (decls, nested) = parse_rule_body_items(body_str);
+        if nested.is_empty() {
+            let mut rel_body = String::new();
+            for d in &decls {
+                rel_body.push_str(&format!("{}\n", ensure_semicolon(d)));
+            }
+            all_nested_rules.push(format!("{rel_sel} {{\n    {rel_body}}}"));
+        } else {
+            let mut rel_body_lines = Vec::new();
+            for d in &decls {
+                rel_body_lines.push(format!("    {}", ensure_semicolon(d)));
+            }
+            for nr in &nested {
+                rel_body_lines.push(nr.clone());
+            }
+            let rel_body = rel_body_lines.join("\n");
+            all_nested_rules.push(format!("{rel_sel} {{\n{rel_body}\n}}"));
+        }
+    }
+}
+
+fn format_conditional_into_lines(
+    first_sel: &str,
+    at_header: &str,
+    inner_sel: &str,
+    inner_body: &str,
+    nested_indent: &str,
+    unit: &str,
+) -> Vec<String> {
+    let (decls, nested) = parse_rule_body_items(inner_body);
+    let level2 = format!("{nested_indent}{unit}");
+    let level3 = format!("{level2}{unit}");
+    let mut lines = Vec::new();
+
+    let push_at_block = |lines: &mut Vec<String>, header_indent: &str, body_indent: &str| {
+        lines.push(format!("{header_indent}{at_header} {{"));
+        for d in &decls {
+            lines.push(format!("{body_indent}{}", ensure_semicolon(d)));
+        }
+        for nr in &nested {
+            for line in nr.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    lines.push(String::new());
+                } else {
+                    lines.push(format!("{body_indent}{}", ensure_semicolon(trimmed)));
+                }
+            }
+        }
+        lines.push(format!("{header_indent}}}"));
+    };
+
+    if inner_sel == first_sel {
+        push_at_block(&mut lines, nested_indent, &level2);
+    } else if let Some(rel_sel) = extract_related_nested_selector(first_sel, inner_sel) {
+        lines.push(format!("{nested_indent}{rel_sel} {{"));
+        push_at_block(&mut lines, &level2, &level3);
+        lines.push(format!("{nested_indent}}}"));
+    }
+    lines
+}
+
 fn format_merged_rule(
     first_sel: &str,
     parent_indent: &str,
     unit: &str,
-    cluster: &[&SourceNode],
+    cluster: &[GatherMember<'_>],
     source: &str,
 ) -> String {
     let nested_indent = format!("{parent_indent}{unit}");
@@ -1544,33 +1909,37 @@ fn format_merged_rule(
 
     let mut all_decls = Vec::new();
     let mut all_nested_rules = Vec::new();
+    let mut conditional_lines = Vec::new();
 
-    for c in cluster {
-        let cand_sel = c.prelude(source).trim();
-        if let Some(body_range) = &c.body_range {
-            let body_str = &source[body_range.clone()];
-            if cand_sel == first_sel {
-                let (decls, nested) = parse_rule_body_items(body_str);
-                all_decls.extend(decls);
-                all_nested_rules.extend(nested);
-            } else if let Some(rel_sel) = extract_related_nested_selector(first_sel, cand_sel) {
-                let (decls, nested) = parse_rule_body_items(body_str);
-                if nested.is_empty() {
-                    let mut rel_body = String::new();
-                    for d in &decls {
-                        rel_body.push_str(&format!("{d}\n"));
+    for member in cluster {
+        match member {
+            GatherMember::Style(c) => {
+                if let Some(body_range) = &c.body_range {
+                    let cand_sel = c.prelude(source).trim();
+                    let body_str = &source[body_range.clone()];
+                    push_style_member_into_merge(
+                        first_sel,
+                        cand_sel,
+                        body_str,
+                        &mut all_decls,
+                        &mut all_nested_rules,
+                    );
+                }
+            }
+            GatherMember::Conditional { at_node, inner, .. } => {
+                if let Some(body_range) = &inner.body_range {
+                    let extra = format_conditional_into_lines(
+                        first_sel,
+                        at_node.prelude(source).trim(),
+                        inner.prelude(source).trim(),
+                        &source[body_range.clone()],
+                        &nested_indent,
+                        unit,
+                    );
+                    if !conditional_lines.is_empty() && !extra.is_empty() {
+                        conditional_lines.push(String::new());
                     }
-                    all_nested_rules.push(format!("{rel_sel} {{\n    {rel_body}}}"));
-                } else {
-                    let mut rel_body_lines = Vec::new();
-                    for d in &decls {
-                        rel_body_lines.push(format!("    {d}"));
-                    }
-                    for nr in &nested {
-                        rel_body_lines.push(nr.clone());
-                    }
-                    let rel_body = rel_body_lines.join("\n");
-                    all_nested_rules.push(format!("{rel_sel} {{\n{rel_body}\n}}"));
+                    conditional_lines.extend(extra);
                 }
             }
         }
@@ -1579,7 +1948,7 @@ fn format_merged_rule(
     let mut body_lines = Vec::new();
 
     for d in &all_decls {
-        body_lines.push(format!("{nested_indent}{d}"));
+        body_lines.push(format!("{nested_indent}{}", ensure_semicolon(d)));
     }
 
     if !all_decls.is_empty() && !all_nested_rules.is_empty() {
@@ -1599,7 +1968,7 @@ fn format_merged_rule(
             if m_trimmed.is_empty() {
                 body_lines.push(String::new());
             } else {
-                body_lines.push(format!("{inner_indent}{m_trimmed}"));
+                body_lines.push(format!("{inner_indent}{}", ensure_semicolon(m_trimmed)));
             }
         }
 
@@ -1611,6 +1980,13 @@ fn format_merged_rule(
         if idx < all_nested_rules.len() - 1 {
             body_lines.push(String::new());
         }
+    }
+
+    if !conditional_lines.is_empty() {
+        if !body_lines.is_empty() {
+            body_lines.push(String::new());
+        }
+        body_lines.extend(conditional_lines);
     }
 
     let body_content = body_lines.join("\n");
@@ -1658,7 +2034,10 @@ fn plan_merge_adjacent_identical_selectors(
                 let unit = detect_indent_unit(source, first_body_range.clone())
                     .unwrap_or_else(|| "    ".to_string());
 
-                let proposed = format_merged_rule(first_sel, &parent_indent, &unit, &cluster, source);
+                let members: Vec<GatherMember<'_>> =
+                    cluster.iter().copied().map(GatherMember::Style).collect();
+                let proposed =
+                    format_merged_rule(first_sel, &parent_indent, &unit, &members, source);
 
                 plans.push(PlanEntry {
                     id: String::new(),
@@ -1699,33 +2078,110 @@ fn plan_gather_related_selector_rules(
         return;
     }
 
-    let mut base_candidates = Vec::new();
-
+    let mut exact_homes: Vec<&str> = Vec::new();
+    let mut home_weight: HashMap<&str, usize> = HashMap::new();
     for node in nodes {
         if matches!(&node.kind, NodeKind::Style) {
             let sel = node.prelude(source).trim();
-            if !sel.is_empty() && !sel.starts_with('&') && !sel.starts_with('+') && !sel.starts_with('>') && !sel.starts_with('~') {
-                let base = if let Some(colon_pos) = sel.find(':') {
-                    sel[..colon_pos].trim()
-                } else if let Some(bracket_pos) = sel.find('[') {
-                    sel[..bracket_pos].trim()
-                } else {
-                    sel
-                };
-                if !base.is_empty() && !base_candidates.contains(&base) {
-                    base_candidates.push(base);
+            // Core homes only: `.skip-link`, `*`, `div` — not `.skip-link:hover`.
+            let core = first_compound_stripped(sel).unwrap_or(sel);
+            // `&` cannot represent a pseudo-element (CSS Nesting). Do not use
+            // `::foo` rules as gather homes for other selectors.
+            if is_simple_compound_selector(sel) && core == sel && !sel.contains("::") {
+                if !exact_homes.contains(&sel) {
+                    exact_homes.push(sel);
+                }
+                *home_weight.entry(sel).or_insert(0) += style_body_weight(source, node);
+            }
+            if let Some(stripped) = first_compound_stripped(sel) {
+                if !exact_homes.contains(&stripped)
+                    && is_simple_compound_selector(stripped)
+                    && !stripped.contains("::")
+                {
+                    // Virtual home (no exact rule yet). Weight 0 so a real
+                    // existing selector of equal specificity still wins.
+                    exact_homes.push(stripped);
+                    home_weight.entry(stripped).or_insert(0);
                 }
             }
         }
     }
 
-    for base in base_candidates {
-        let mut cluster: Vec<&SourceNode> = Vec::new();
+    let mut grouped_at_blocks: HashSet<usize> = HashSet::new();
+    for node in nodes {
+        if let NodeKind::AtBlock { name, .. } = &node.kind {
+            if !GATHERABLE_CONDITIONALS.contains(&name.as_str()) {
+                continue;
+            }
+            let Some(body_range) = &node.body_range else {
+                continue;
+            };
+            let inner_nodes = scan_nodes(source, body_range.clone());
+            let style_inners: Vec<&SourceNode> = inner_nodes
+                .iter()
+                .filter(|n| matches!(&n.kind, NodeKind::Style))
+                .collect();
+            if style_inners.len() < 3 {
+                continue;
+            }
+            let mut assigned_homes: HashSet<&str> = HashSet::new();
+            for inner in &style_inners {
+                let sel = inner.prelude(source).trim();
+                match assign_gather_home(sel, &exact_homes, &home_weight) {
+                    Some(home) => {
+                        assigned_homes.insert(home);
+                    }
+                    None => {
+                        assigned_homes.insert("");
+                    }
+                }
+            }
+            if assigned_homes.len() >= 2 {
+                grouped_at_blocks.insert(node.start);
+            }
+        }
+    }
+
+    for base in exact_homes.clone() {
+        let mut cluster: Vec<GatherMember<'_>> = Vec::new();
         for node in nodes {
             if matches!(&node.kind, NodeKind::Style) {
                 let sel = node.prelude(source).trim();
-                if sel == base || extract_related_nested_selector(base, sel).is_some() {
-                    cluster.push(node);
+                let belongs = sel == base
+                    || assign_gather_home(sel, &exact_homes, &home_weight) == Some(base);
+                if belongs {
+                    cluster.push(GatherMember::Style(node));
+                }
+            } else if let NodeKind::AtBlock { name, .. } = &node.kind {
+                if grouped_at_blocks.contains(&node.start) {
+                    continue;
+                }
+                if GATHERABLE_CONDITIONALS.contains(&name.as_str()) {
+                    if let Some(body_range) = &node.body_range {
+                        let inner_nodes = scan_nodes(source, body_range.clone());
+                        let related: Vec<SourceNode> = inner_nodes
+                            .iter()
+                            .filter(|inner| {
+                                matches!(&inner.kind, NodeKind::Style) && {
+                                    let sel = inner.prelude(source).trim();
+                                    sel == base
+                                        || assign_gather_home(sel, &exact_homes, &home_weight)
+                                            == Some(base)
+                                }
+                            })
+                            .cloned()
+                            .collect();
+                        if !related.is_empty() {
+                            let delete_whole_at_block = related.len() == inner_nodes.len();
+                            for inner in related {
+                                cluster.push(GatherMember::Conditional {
+                                    at_node: node,
+                                    inner,
+                                    delete_whole_at_block,
+                                });
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1733,16 +2189,23 @@ fn plan_gather_related_selector_rules(
         if cluster.len() > 1 {
             let mut is_non_adjacent = false;
             for window in cluster.windows(2) {
-                let prev = window[0];
-                let next = window[1];
-                if !is_whitespace_only(source, prev.end..next.start) {
+                let prev_end = window[0].outer_end();
+                let next_start = window[1].outer_start();
+                if !is_whitespace_only(source, prev_end..next_start) {
                     is_non_adjacent = true;
                     break;
                 }
             }
 
+            let first_style = cluster.iter().find_map(|m| match m {
+                GatherMember::Style(n) => Some(*n),
+                GatherMember::Conditional { .. } => None,
+            });
+
             if is_non_adjacent {
-                let first = cluster[0];
+                let Some(first) = first_style else {
+                    continue;
+                };
                 let parent_indent = line_indent(source, first.start);
                 let first_body_range = first.body_range.as_ref().unwrap();
                 let unit = detect_indent_unit(source, first_body_range.clone())
@@ -1784,13 +2247,38 @@ fn plan_gather_related_selector_rules(
                     selected: true,
                 });
 
-                for sec in &cluster[1..] {
-                    let mut sec_end = sec.end;
-                    if source[sec_end..].starts_with("\r\n") {
-                        sec_end += 2;
-                    } else if source[sec_end..].starts_with('\n') {
-                        sec_end += 1;
-                    }
+                let mut deleted_at_blocks = HashSet::new();
+                for member in &cluster {
+                    let (sec_start, sec_end, line_at) = match member {
+                        GatherMember::Style(sec) if sec.start == first.start => continue,
+                        GatherMember::Style(sec) => (
+                            sec.start,
+                            extend_with_trailing_newline(source, sec.end),
+                            sec.start,
+                        ),
+                        GatherMember::Conditional {
+                            at_node,
+                            inner,
+                            delete_whole_at_block,
+                        } => {
+                            if *delete_whole_at_block {
+                                if !deleted_at_blocks.insert(at_node.start) {
+                                    continue;
+                                }
+                                (
+                                    at_node.start,
+                                    extend_with_trailing_newline(source, at_node.end),
+                                    at_node.start,
+                                )
+                            } else {
+                                (
+                                    inner.start,
+                                    extend_with_trailing_newline(source, inner.end),
+                                    inner.start,
+                                )
+                            }
+                        }
+                    };
 
                     plans.push(PlanEntry {
                         id: String::new(),
@@ -1798,17 +2286,17 @@ fn plan_gather_related_selector_rules(
                         rules: vec![RuleId::GatherRelatedSelectorRules],
                         safety: Safety::Review,
                         source_range: SourceRange {
-                            start: sec.start,
+                            start: sec_start,
                             end: sec_end,
                         },
-                        original: source[sec.start..sec_end].to_string(),
+                        original: source[sec_start..sec_end].to_string(),
                         proposed: String::new(),
                         proof: Proof::safe_local(),
                         warnings: Vec::new(),
                         reason: format!(
                             "Remove non-adjacent gathered rule for '{}' at line {}.",
                             base,
-                            line_number(source, sec.start)
+                            line_number(source, line_at)
                         ),
                         selected: true,
                     });
@@ -1885,7 +2373,7 @@ fn plan_factor_identical_states_with_is(
                                 let trimmed = line.trim();
                                 if !trimmed.is_empty() {
                                     decls.push_str(&inner_decl_indent);
-                                    decls.push_str(trimmed);
+                                    decls.push_str(&ensure_semicolon(trimmed));
                                     decls.push('\n');
                                 }
                             }
@@ -1988,7 +2476,7 @@ fn plan_factor_multi_selector_cluster_with_is(
                                     let trimmed = line.trim();
                                     if !trimmed.is_empty() {
                                         out.push_str(&nested_indent);
-                                        out.push_str(trimmed);
+                                        out.push_str(&ensure_semicolon(trimmed));
                                         out.push('\n');
                                         has_direct_decls = true;
                                     }
@@ -2011,7 +2499,7 @@ fn plan_factor_multi_selector_cluster_with_is(
                                     let trimmed = line.trim();
                                     if !trimmed.is_empty() {
                                         out.push_str(&inner_decl_indent);
-                                        out.push_str(trimmed);
+                                        out.push_str(&ensure_semicolon(trimmed));
                                         out.push('\n');
                                     }
                                 }
@@ -2143,7 +2631,7 @@ fn plan_merge_identical_rule_bodies(
                         let trimmed = line.trim();
                         if !trimmed.is_empty() {
                             decls.push_str(&nested_indent);
-                            decls.push_str(trimmed);
+                            decls.push_str(&ensure_semicolon(trimmed));
                             decls.push('\n');
                         }
                     }
@@ -2269,7 +2757,7 @@ pub fn factor_selector_list(
         let trimmed = line.trim();
         if !trimmed.is_empty() {
             out.push_str(&inner_decl_indent);
-            out.push_str(trimmed);
+            out.push_str(&ensure_semicolon(trimmed));
             out.push('\n');
         }
     }
@@ -2404,61 +2892,67 @@ pub fn modernize_media_query_str(prelude: &str) -> Option<String> {
     let mut changed = false;
 
     // Range: (min-width: 400px) and (max-width: 800px) -> (400px <= width <= 800px)
-    if let (Some(min_idx), Some(max_idx)) = (result.find("min-width:"), result.find("max-width:")) {
-        if min_idx < max_idx {
-            if let (Some(min_val), Some(max_val)) = (
-                extract_media_val(&result, "min-width:"),
-                extract_media_val(&result, "max-width:"),
-            ) {
-                let pattern = format!("(min-width: {min_val}) and (max-width: {max_val})");
-                let replacement = format!("({min_val} <= width <= {max_val})");
-                if result.contains(&pattern) {
-                    result = result.replace(&pattern, &replacement);
-                    changed = true;
-                }
-            }
+    if let (Some((min_raw, min_val)), Some((max_raw, max_val))) = (
+        extract_media_feature_and_raw(&result, "min-width"),
+        extract_media_feature_and_raw(&result, "max-width"),
+    ) {
+        let pattern = format!("{min_raw} and {max_raw}");
+        let replacement = format!("({min_val} <= width <= {max_val})");
+        if result.contains(&pattern) {
+            result = result.replace(&pattern, &replacement);
+            changed = true;
         }
     }
 
     // Single: (min-width: 800px) -> (width >= 800px)
-    while let Some(val) = extract_media_val(&result, "min-width:") {
-        let pattern = format!("(min-width: {val})");
+    while let Some((raw, val)) = extract_media_feature_and_raw(&result, "min-width") {
         let replacement = format!("(width >= {val})");
-        result = result.replace(&pattern, &replacement);
+        result = result.replacen(&raw, &replacement, 1);
         changed = true;
     }
 
     // Single: (max-width: 800px) -> (width <= 800px)
-    while let Some(val) = extract_media_val(&result, "max-width:") {
-        let pattern = format!("(max-width: {val})");
+    while let Some((raw, val)) = extract_media_feature_and_raw(&result, "max-width") {
         let replacement = format!("(width <= {val})");
-        result = result.replace(&pattern, &replacement);
+        result = result.replacen(&raw, &replacement, 1);
         changed = true;
     }
 
     // Single: (min-height: 400px) -> (height >= 400px)
-    while let Some(val) = extract_media_val(&result, "min-height:") {
-        let pattern = format!("(min-height: {val})");
+    while let Some((raw, val)) = extract_media_feature_and_raw(&result, "min-height") {
         let replacement = format!("(height >= {val})");
-        result = result.replace(&pattern, &replacement);
+        result = result.replacen(&raw, &replacement, 1);
         changed = true;
     }
 
     // Single: (max-height: 400px) -> (height <= 400px)
-    while let Some(val) = extract_media_val(&result, "max-height:") {
-        let pattern = format!("(max-height: {val})");
+    while let Some((raw, val)) = extract_media_feature_and_raw(&result, "max-height") {
         let replacement = format!("(height <= {val})");
-        result = result.replace(&pattern, &replacement);
+        result = result.replacen(&raw, &replacement, 1);
         changed = true;
     }
 
-    if changed { Some(result) } else { None }
+    if changed {
+        Some(result)
+    } else {
+        None
+    }
 }
 
-fn extract_media_val<'a>(source: &'a str, feature: &str) -> Option<&'a str> {
-    let start = source.find(feature)? + feature.len();
-    let end = source[start..].find(')')? + start;
-    Some(source[start..end].trim())
+fn extract_media_feature_and_raw(source: &str, feature: &str) -> Option<(String, String)> {
+    let feat_idx = source.find(feature)?;
+    let open_paren = source[..feat_idx].rfind('(')?;
+    if source[open_paren..feat_idx].contains(')') {
+        return None;
+    }
+    let colon_rel = source[feat_idx + feature.len()..].find(':')?;
+    let colon_idx = feat_idx + feature.len() + colon_rel;
+    let close_paren_rel = source[colon_idx..].find(')')?;
+    let close_paren = colon_idx + close_paren_rel;
+
+    let raw = source[open_paren..=close_paren].to_string();
+    let val = source[colon_idx + 1..close_paren].trim().to_string();
+    Some((raw, val))
 }
 
 fn selector_relation(parent: &str, child: &str) -> Option<(RelationKind, String)> {
@@ -2470,9 +2964,15 @@ fn selector_relation(parent: &str, child: &str) -> Option<(RelationKind, String)
         || contains_top_level_comma(child)
         || parent.contains("::")
         || child == parent
-        || !child.starts_with(parent)
     {
         return None;
+    }
+
+    if !child.starts_with(parent) {
+        if is_weak_gather_base(parent) {
+            return None;
+        }
+        return appended_selector_relation(parent, child);
     }
 
     let remainder = &child[parent.len()..];
@@ -2701,7 +3201,7 @@ fn render_cluster(source: &str, parent: &SourceNode, children: &[ClusterChild]) 
             let trimmed_line = line.trim();
             if !trimmed_line.is_empty() {
                 out.push_str(&nested_indent);
-                out.push_str(trimmed_line);
+                out.push_str(&ensure_semicolon(trimmed_line));
                 out.push('\n');
             }
         }
@@ -2862,7 +3362,7 @@ fn render_hierarchical_rule(out: &mut String, rule: &HierarchicalRule, indent: &
             if sub.relative_selector.is_empty() {
                 for line in &sub.body_lines {
                     out.push_str(&inner_indent);
-                    out.push_str(line);
+                    out.push_str(&ensure_semicolon(line));
                     out.push('\n');
                 }
             } else {
@@ -2878,7 +3378,7 @@ fn render_hierarchical_rule(out: &mut String, rule: &HierarchicalRule, indent: &
 
         for line in &rule.body_lines {
             out.push_str(&inner_indent);
-            out.push_str(line);
+            out.push_str(&ensure_semicolon(line));
             out.push('\n');
         }
 
@@ -2898,6 +3398,24 @@ fn line_indent(source: &str, offset: usize) -> String {
         .chars()
         .take_while(|c| c.is_whitespace() && *c != '\n' && *c != '\r')
         .collect()
+}
+
+/// Ensure a CSS declaration line ends with `;`.
+/// Only adds the semicolon when the line looks like a property declaration
+/// (contains `:`, does not already end with `;`, `{`, or `}`, and is not a comment).
+fn ensure_semicolon(line: &str) -> std::borrow::Cow<'_, str> {
+    let trimmed = line.trim_end();
+    if trimmed.ends_with(';')
+        || trimmed.ends_with('{')
+        || trimmed.ends_with('}')
+        || trimmed.ends_with(',')
+        || trimmed.starts_with("//")
+        || trimmed.starts_with("/*")
+        || !trimmed.contains(':')
+    {
+        return std::borrow::Cow::Borrowed(line);
+    }
+    std::borrow::Cow::Owned(format!("{trimmed};"))
 }
 
 fn line_number(source: &str, offset: usize) -> usize {
@@ -3467,5 +3985,439 @@ mod tests {
         assert!(output.contains("+ * {"));
         assert!(output.contains("&::backdrop {"));
         assert!(output.contains("&:has(*) {"));
+    }
+
+    #[test]
+    fn test_modernizes_media_range_syntax_no_whitespace() {
+        let input = "@media (max-width:60rem) { .content { width: 100%; } }";
+        let plans = plan(input, &[RuleId::ModernizeMediaRange]);
+        assert_eq!(plans.len(), 1);
+        let output = apply_selected_plans(input, &plans, true).unwrap();
+        assert!(output.contains("(width <= 60rem)"));
+    }
+
+    #[test]
+    fn nesting_adds_semicolon_to_last_declaration_without_semicolon() {
+        // .tabpanel body ends with `display: block !important` (no `;`)
+        // After nesting the combinator, the declaration must get a `;` inserted
+        // so it doesn't run together with the opening `{` of the nested rule.
+        let css = r#".tabpanel {
+  display: block !important
+}
+
+.tabpanel+.tabpanel {
+  margin-block-start: .5rem
+}
+"#;
+        let rules = &[
+            RuleId::NestCombinator,
+            RuleId::NestDescendant,
+            RuleId::NestPseudoClass,
+            RuleId::NestPseudoElement,
+        ];
+        let plans = plan(css, rules);
+        assert!(!plans.is_empty(), "expected at least one nesting plan");
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        // Must NOT contain the malformed concatenation
+        assert!(
+            !output.contains("!important+"),
+            "semicolon missing before nested rule: {output}"
+        );
+        // Must contain properly terminated declaration
+        assert!(
+            output.contains("!important;") || output.contains("!important\n"),
+            "declaration should end with ';': {output}"
+        );
+        // Nested rule selector must appear on its own
+        assert!(
+            output.contains("+ .tabpanel {") || output.contains("+.tabpanel {"),
+            "nested combinator rule missing: {output}"
+        );
+    }
+
+    #[test]
+    fn gather_related_selector_rules_adds_semicolon_to_declarations_without_semicolon() {
+        // Declarations without trailing `;` must get one inserted when gathered
+        // into the canonical block so they don't corrupt nested rule opening braces.
+        let css = r#".skip-link {
+    position: absolute;
+    font-weight: 700
+}
+
+.unrelated { color: red }
+
+.skip-link:focus {
+    outline: 2px solid currentColor
+}
+
+.skip-link+* {
+    display: block
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        assert!(!plans.is_empty(), "expected gather plan");
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        // No declaration should run together with `{`
+        assert!(
+            !output.contains("700\n    &") && !output.contains("700&") && !output.contains("700{"),
+            "semicolon missing before nested pseudo/combinator: {output}"
+        );
+        assert!(
+            !output.contains("currentColor\n    + *") && !output.contains("currentColor{"),
+            "semicolon missing before nested combinator: {output}"
+        );
+        // All gathered declarations must end with `;`
+        assert!(output.contains("font-weight: 700;"), "missing ';' after font-weight: {output}");
+        assert!(output.contains("position: absolute;"), "missing ';' after position: {output}");
+    }
+
+    #[test]
+    fn gathers_non_adjacent_related_rule_inside_media_query() {
+        let css = r#".skip-link {
+    position: absolute;
+    font-weight: 700;
+
+    &:focus-visible {
+        inset-block-start: 0.75rem;
+    }
+}
+
+.unrelated {
+    color: red;
+}
+
+@media (width <= 1024px) {
+    .skip-link :not(*) {
+        position: inherit
+    }
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        assert!(!plans.is_empty(), "expected gather plan for media-wrapped related rule");
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(
+            !output.contains(".skip-link :not(*)"),
+            "flat media descendant should be gathered: {output}"
+        );
+        assert!(
+            output.contains(":not(*) {"),
+            "descendant :not(*) should nest under .skip-link: {output}"
+        );
+        assert!(
+            output.contains("@media (width <= 1024px) {"),
+            "media query should nest inside :not(*): {output}"
+        );
+        assert!(
+            output.contains("position: inherit"),
+            "declaration should be preserved: {output}"
+        );
+        let not_pos = output.find(":not(*) {").expect(":not(*)");
+        let media_pos = output.find("@media (width <= 1024px) {").expect("@media");
+        assert!(
+            media_pos > not_pos,
+            "media must nest inside :not(*), not the reverse: {output}"
+        );
+    }
+
+    #[test]
+    fn gathers_exact_parent_inside_media_as_nested_at_rule() {
+        let css = r#".skip-link {
+    position: absolute;
+}
+
+.unrelated { color: red }
+
+@media (width <= 600px) {
+    .skip-link {
+        display: none
+    }
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(output.contains("@media (width <= 600px) {"), "{output}");
+        assert!(output.contains("display: none;"), "{output}");
+        assert!(
+            !output.contains("@media (width <= 600px) {\n    .skip-link"),
+            "should invert to .skip-link {{ @media }}: {output}"
+        );
+    }
+
+    #[test]
+    fn gather_media_leaves_unrelated_siblings_in_place() {
+        let css = r#".skip-link {
+    position: absolute;
+}
+
+.unrelated { color: red }
+
+@media (width <= 1024px) {
+    .skip-link :not(*) {
+        position: inherit
+    }
+    .other {
+        color: blue
+    }
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(output.contains(":not(*) {"), "{output}");
+        assert!(
+            output.contains(".other") && output.contains("color: blue"),
+            "unrelated sibling must stay in the media block: {output}"
+        );
+    }
+
+    #[test]
+    fn nests_appended_nesting_selector_descendant() {
+        // MDN: .featured .card → .card { .featured & { ... } }
+        let css = ".card {\n  color: red;\n}\n.featured .card {\n  border: 1px solid;\n}\n";
+        let plans = plan(css, &[RuleId::NestDescendant]);
+        assert_eq!(plans.len(), 1);
+        let output = apply_selected_plans(css, &plans, false).unwrap();
+        assert!(
+            output.contains(".featured & {"),
+            "expected appended &: {output}"
+        );
+        assert!(output.contains("border: 1px solid;"), "{output}");
+    }
+
+    #[test]
+    fn nests_appended_nesting_selector_not() {
+        // MDN-adjacent: :not(.card) → .card { :not(&) { ... } }
+        let css = ".card {\n  color: red;\n}\n:not(.card) {\n  display: none;\n}\n";
+        let plans = plan(css, &[RuleId::NestPseudoClass]);
+        assert_eq!(plans.len(), 1);
+        let output = apply_selected_plans(css, &plans, false).unwrap();
+        assert!(output.contains(":not(&) {"), "expected :not(&): {output}");
+        assert!(output.contains("display: none;"), "{output}");
+    }
+
+    #[test]
+    fn nests_appended_compound_selector() {
+        let css = ".card {\n  color: red;\n}\n.featured.card {\n  font-weight: 700;\n}\n";
+        let plans = plan(css, &[RuleId::NestCompound]);
+        assert_eq!(plans.len(), 1);
+        let output = apply_selected_plans(css, &plans, false).unwrap();
+        assert!(
+            output.contains(".featured& {"),
+            "expected compound appended &: {output}"
+        );
+    }
+
+    #[test]
+    fn gathers_non_adjacent_appended_nesting_selector() {
+        let css = r#".card {
+    color: red;
+}
+
+.unrelated { color: blue }
+
+.featured .card {
+    border: 1px solid
+}
+
+:not(.card) {
+    display: none
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        assert!(!plans.is_empty());
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(output.contains(".featured & {"), "{output}");
+        assert!(output.contains(":not(&) {"), "{output}");
+        assert!(!output.contains(".featured .card"), "{output}");
+        assert!(!output.contains(":not(.card)"), "{output}");
+    }
+
+    #[test]
+    fn gather_does_not_nest_selector_list_under_one_branch() {
+        // `A, B { shared }` must not become `B { A, & { shared } }` —
+        // that turns A into a descendant of B.
+        let css = r#"::view-transition-old(root),
+::view-transition-new(root) {
+    position: absolute;
+    inset: 0;
+    animation: 0.55s ease-in-out both;
+}
+
+.unrelated { color: red }
+
+::view-transition-old(root) {
+    animation-name: fadeOut;
+}
+
+::view-transition-new(root) {
+    animation-name: fadeIn;
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules, RuleId::FactorSelectorList]);
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(
+            !output.contains("::view-transition-old(root),\n    &")
+                && !output.contains("::view-transition-old(root),\n    & {")
+                && !output.contains("::view-transition-old(root),\n        &"),
+            "selector list must not nest under one branch: {output}"
+        );
+        assert!(
+            output.contains("::view-transition-old(root)")
+                && output.contains("::view-transition-new(root)")
+                && output.contains("animation-name: fadeOut")
+                && output.contains("animation-name: fadeIn"),
+            "both branches and their unique decls must remain: {output}"
+        );
+        assert!(
+            output.contains("position: absolute"),
+            "shared declarations must be kept: {output}"
+        );
+    }
+
+    #[test]
+    fn gather_prefers_existing_specific_home_over_universal_append() {
+        // `.skip-link + *` and `.skip-link:has(*)` can also be written as
+        // `*` { `.skip-link+&` / `.skip-link:has(&)` }. The existing `.skip-link`
+        // rule is the stronger home — do not duplicate into `*`.
+        let css = r#".skip-link {
+    position: absolute;
+    font-weight: 700;
+}
+
+* {
+    margin: 0;
+}
+
+.unrelated { color: red }
+
+.skip-link+* {
+    display: block
+}
+
+.skip-link:has(*) {
+    color: #27ca3f
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(
+            output.contains("+ * {") || output.contains("+* {"),
+            "combinator should nest under .skip-link: {output}"
+        );
+        assert!(
+            output.contains("&:has(*) {"),
+            ":has(*) should nest under .skip-link: {output}"
+        );
+        assert!(
+            !output.contains(".skip-link+&")
+                && !output.contains(".skip-link + &")
+                && !output.contains(".skip-link:has(&)"),
+            "must not append the same rules into *: {output}"
+        );
+        let star = output.find("\n* {").or_else(|| output.find("* {"));
+        if let Some(star_at) = star {
+            let after_star = &output[star_at..];
+            let star_body = after_star.split('}').next().unwrap_or(after_star);
+            assert!(
+                !star_body.contains("skip-link"),
+                "* must not absorb skip-link rules: {output}"
+            );
+        }
+    }
+
+    #[test]
+    fn gather_appends_only_when_no_prefix_home_exists() {
+        let css = r#".card {
+    color: red;
+}
+
+.unrelated { color: blue }
+
+.featured .card {
+    border: 1px solid
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(output.contains(".featured & {"), "{output}");
+        assert!(!output.contains(".featured .card"), "{output}");
+    }
+
+    #[test]
+    fn gather_keeps_busy_mixed_media_grouped() {
+        let css = r#".nav-links { display: flex; }
+.hamburger-menu { display: none; }
+.nav-controls { gap: 1rem; }
+
+.unrelated { color: red }
+
+@media (width <= 1024px) {
+    .nav-links { display: none }
+    .hamburger-menu { display: flex }
+    .nav-controls { margin-inline-start: auto }
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(
+            output.contains("@media (width <= 1024px)"),
+            "mixed media with 3+ selectors should stay grouped: {output}"
+        );
+        assert!(
+            !output.contains(".nav-links {\n    display: flex;\n\n    @media")
+                && !output.contains(".hamburger-menu {\n    display: none;\n\n    @media"),
+            "should not explode a busy media query into each parent: {output}"
+        );
+    }
+
+    #[test]
+    fn appended_nesting_does_not_match_ident_suffix() {
+        let css = ".card {\n  color: red;\n}\n.mycard {\n  color: blue;\n}\n";
+        let plans = plan(css, &[RuleId::NestCompound, RuleId::NestDescendant]);
+        assert!(
+            plans.is_empty(),
+            ".mycard must not nest under .card: {:?}",
+            plans.iter().map(|p| &p.proposed).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn gather_preserves_nested_selector_lists() {
+        // `&::before,` contains `:` but is a selector-list continuation, not a declaration.
+        let css = r#"* {
+    margin: 0;
+}
+
+.unrelated { color: red }
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        &,
+        &::before,
+        &::after {
+            animation-duration: 0.001ms !important
+        }
+    }
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(
+            !output.contains("&::before,\n        ;")
+                && !output.contains("&::before,;")
+                && !output.contains("&,\n        ;")
+                && !output.contains("&,;"),
+            "selector-list comma must not become a declaration terminator: {output}"
+        );
+        assert!(
+            output.contains("&::before,") && output.contains("&::after {"),
+            "compound pseudo selector list must stay intact: {output}"
+        );
+        let before = output.find("&::before,").expect("before");
+        let after = output.find("&::after {").expect("after");
+        let between = &output[before..after];
+        assert!(
+            !between.contains(';'),
+            "no semicolon between selector-list items: {between:?} in {output}"
+        );
     }
 }
