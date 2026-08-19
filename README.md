@@ -17,7 +17,7 @@
 | Package | Type | Crates.io | Description |
 | :--- | :--- | :---: | :--- |
 | [**`cssforge`**](https://crates.io/crates/cssforge) | **CLI / TUI Binary** | [![crates.io](https://img.shields.io/crates/v/cssforge.svg?style=flat-square)](https://crates.io/crates/cssforge) | Standalone executable with both an interactive visual terminal UI (TUI workbench) and headless CLI. |
-| [**`cssforge-core`**](https://crates.io/crates/cssforge-core) | **Pure Rust Library** | [![crates.io](https://img.shields.io/crates/v/cssforge-core.svg?style=flat-square)](https://crates.io/crates/cssforge-core) | Headless AST parser, specificity calculator, and 26 transformation rules with zero UI dependencies. |
+| [**`cssforge-core`**](https://crates.io/crates/cssforge-core) | **Pure Rust Library** | [![crates.io](https://img.shields.io/crates/v/cssforge-core.svg?style=flat-square)](https://crates.io/crates/cssforge-core) | Headless AST parser, specificity calculator, and 27 transformation rules with zero UI dependencies. |
 | [**`cssforge-tui`**](https://crates.io/crates/cssforge-tui) | **UI Component** | [![crates.io](https://img.shields.io/crates/v/cssforge-tui.svg?style=flat-square)](https://crates.io/crates/cssforge-tui) | Reusable Ratatui/Crossterm interface, ASCII banner, step-by-step wizard, and unified diff viewer. |
 
 ---
@@ -37,20 +37,20 @@ Download from [GitHub Releases](https://github.com/jayeshmepani/cssforge/release
 #### 🐧 Linux (x64 / ARM64)
 ```bash
 # Extract and copy to local user bin (no sudo needed):
-tar -xzf cssforge-v0.3.1-linux-x64.tar.gz
-cp cssforge-v0.3.1-linux-x64/cssforge ~/.local/bin/
+tar -xzf cssforge-v0.4.0-linux-x64.tar.gz
+cp cssforge-v0.4.0-linux-x64/cssforge ~/.local/bin/
 chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🍏 macOS (Apple Silicon M-Series)
 ```bash
-tar -xzf cssforge-v0.3.1-macos-arm64.tar.gz
-cp cssforge-v0.3.1-macos-arm64/cssforge ~/.local/bin/
+tar -xzf cssforge-v0.4.0-macos-arm64.tar.gz
+cp cssforge-v0.4.0-macos-arm64/cssforge ~/.local/bin/
 chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🪟 Windows (x64 / ARM64 Snapdragon)
-Extract `cssforge.exe` from `cssforge-v0.3.1-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
+Extract `cssforge.exe` from `cssforge-v0.4.0-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
 
 ---
 
@@ -113,19 +113,20 @@ cssforge apply ./src/app.css --preset modern --output new-file
 # Overwrite in-place with automatic safety backup (.bak)
 cssforge apply ./src/app.css --output overwrite-with-backup --yes
 
-# List all 26 transformation rules
+# List all 27 transformation rules
 cssforge rules
 ```
 
 ---
 
-## 🛠️ 26 Transformation Rules Summary
+## 🛠️ 27 Transformation Rules Summary
 
 * **Native Nesting**: `nest-pseudo-class`, `nest-pseudo-element`, `nest-attribute`, `nest-compound`, `nest-descendant`, `nest-combinator`, `factor-selector-list`.
 * **Conditional At-Rules**: `nest-media`, `nest-supports`, `nest-container`, `nest-starting-style`.
 * **Modern Selectors**: `consolidate-not`, `modernize-is`, `modernize-where`, `modernize-media-range-syntax`.
 * **At-Rule Merging**: `merge-same-named-layer`, `merge-adjacent-media`, `merge-adjacent-supports`, `merge-adjacent-container`, `merge-identical-scope`, `merge-identical-starting-style`.
 * **Deduplication & Pruning**: `merge-adjacent-identical-selector`, `merge-identical-rule-bodies`, `factor-identical-states-with-is`, `gather-related-selector-rules`, `prune-overridden-declarations`.
+* **27th — Nest layers under a selector**: `nest-layer-by-selector` factors the exact same selector living in multiple named `@layer` blocks into `.sel { @layer a { … } @layer b { … } }`. Layer identity and first-declared layer order are preserved. It never nests `@layer` inside another `@layer` (that would create a child layer such as `tokens.base`). Gather stays inside one layer; this rule is the safe cross-layer counterpart.
 
 For complete interactive visual examples of each rule, visit the [Documentation Site](https://jayeshmepani.github.io/cssforge/).
 

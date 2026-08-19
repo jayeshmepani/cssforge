@@ -15,5 +15,5 @@ categories = ["command-line-utilities", "development-tools"]
 [dependencies]
 anyhow.workspace = true
 crossterm.workspace = true
-cssforge-core = { path = "../cssforge-core", version = "0.3.1" }
+cssforge-core = { path = "../cssforge-core", version = "0.4.0" }
 ratatui.workspace = true

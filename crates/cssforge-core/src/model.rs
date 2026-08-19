@@ -67,11 +67,12 @@ pub enum RuleId {
     MergeIdenticalRuleBodies,
     FactorIdenticalStatesWithIs,
     GatherRelatedSelectorRules,
+    NestLayerBySelector,
     PruneOverriddenDeclarations,
 }
 
 impl RuleId {
-    pub const ALL: [RuleId; 26] = [
+    pub const ALL: [RuleId; 27] = [
         RuleId::NestPseudoClass,
         RuleId::NestPseudoElement,
         RuleId::NestAttribute,
@@ -97,6 +98,7 @@ impl RuleId {
         RuleId::MergeIdenticalRuleBodies,
         RuleId::FactorIdenticalStatesWithIs,
         RuleId::GatherRelatedSelectorRules,
+        RuleId::NestLayerBySelector,
         RuleId::PruneOverriddenDeclarations,
     ];
 
@@ -127,6 +129,7 @@ impl RuleId {
             Self::MergeIdenticalRuleBodies => "merge-identical-rule-bodies",
             Self::FactorIdenticalStatesWithIs => "factor-identical-states-with-is",
             Self::GatherRelatedSelectorRules => "gather-related-selector-rules",
+            Self::NestLayerBySelector => "nest-layer-by-selector",
             Self::PruneOverriddenDeclarations => "prune-overridden-declarations",
         }
     }
@@ -366,7 +369,15 @@ pub fn rule_definitions() -> Vec<RuleDefinition> {
             title: "Gather related selector rules",
             category: "Structural Refactoring",
             safety_level: SafetyLevel::SemanticReview,
-            description: "Gather scattered related rules into the strongest existing parent (specificity wins; prefix nest beats appended `&` on a tie). Busy @media/@supports blocks with mixed selectors stay grouped. Review required for cascade crossing.",
+            description: "Gather scattered related rules into the strongest existing parent within the same cascade layer (specificity wins; prefix nest beats appended `&` on a tie). Busy @media/@supports blocks with mixed selectors stay grouped. Does not move declarations between named layers.",
+        },
+        RuleDefinition {
+            id: RuleId::NestLayerBySelector,
+            section: RuleSection::Refactor,
+            title: "Nest named layers under a shared selector",
+            category: "Structural Refactoring",
+            safety_level: SafetyLevel::SemanticReview,
+            description: "Factor the exact same selector living in multiple named @layer blocks into `.sel { @layer a { … } @layer b { … } }`, preserving layer identity and first-declared layer order. Never nests @layer inside another @layer (that would create a child layer).",
         },
         RuleDefinition {
             id: RuleId::PruneOverriddenDeclarations,
@@ -476,6 +487,7 @@ impl Preset {
                 RuleId::MergeIdenticalRuleBodies,
                 RuleId::FactorIdenticalStatesWithIs,
                 RuleId::GatherRelatedSelectorRules,
+                RuleId::NestLayerBySelector,
                 RuleId::PruneOverriddenDeclarations,
             ],
             Self::Aggressive => RuleId::ALL.to_vec(),
