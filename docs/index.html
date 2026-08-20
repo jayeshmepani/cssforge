@@ -1,89 +1,159 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="format-detection" content="telephone=no">
+
+  <!-- Mobile web app -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
-  <!-- Theme Color & Mobile Chrome -->
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f17">
+  <!-- Theme color matches docs surfaces (light #f8fafc / dark #0b0f17) -->
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0f17" media="(prefers-color-scheme: dark)">
 
-  <!-- SEO -->
-  <title>CSSForge Documentation — Forward Semantic CSS Refactoring & Modernization Engine</title>
-  <meta name="description" content="Official documentation for CSSForge — lossless, 100% cascade-safe, multi-platform semantic CSS refactoring engine and interactive terminal workbench written in Rust.">
-  <meta name="keywords" content="css refactoring, native css nesting, css modernization, rust css, ratatui, terminal workbench, css specificity proof, cssforge">
-  <meta name="author" content="Jayesh Mepani">
-  <meta name="robots" content="index, follow">
+  <!-- SEO: unique title + description matching visible hero copy; no keyword stuffing -->
+  <meta name="robots" content="index,follow">
+  <title>CSSForge Documentation — Forward Semantic CSS Refactoring &amp; Modernization</title>
+  <meta name="description"
+    content="Official CSSForge documentation: 27 cascade-safe transformation rules for native CSS nesting, :is() clusters, range media queries, layer-safe gather, and nest-layer-by-selector. Rust CLI and TUI workbench.">
   <link rel="canonical" href="https://jayeshmepani.github.io/cssforge/">
 
-  <!-- Open Graph / Social Media -->
-  <meta property="og:type" content="website">
+  <!-- Open Graph (sharing enhancement, not ranking metadata) -->
+  <meta property="og:type" content="article">
   <meta property="og:site_name" content="CSSForge">
-  <meta property="og:title" content="CSSForge — Forward Semantic CSS Modernization Workbench">
-  <meta property="og:description" content="Lossless, cascade-safe, multi-platform semantic CSS refactoring engine and interactive TUI workbench written in Rust.">
+  <meta property="og:title" content="CSSForge Documentation — Forward Semantic CSS Refactoring">
+  <meta property="og:description"
+    content="27 cascade-safe rules for native nesting, :is() clusters, range media queries, and layer-safe gather. Rust CLI and TUI workbench.">
   <meta property="og:url" content="https://jayeshmepani.github.io/cssforge/">
   <meta property="og:locale" content="en_US">
+  <meta property="og:image" content="https://jayeshmepani.github.io/cssforge/social-image.jpg">
+  <meta property="og:image:alt" content="CSSForge — forward semantic CSS refactoring workbench, version 0.4.0">
+  <meta property="og:image:type" content="image/jpeg">
 
-  <!-- Favicon -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2310b981'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-family='Arial,sans-serif' font-size='28' font-weight='800' fill='white'%3ECF%3C/text%3E%3C/svg%3E">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CSSForge Documentation — Forward Semantic CSS Refactoring">
+  <meta name="twitter:description"
+    content="27 cascade-safe rules for native nesting, :is() clusters, range media queries, and layer-safe gather.">
+  <meta name="twitter:image" content="https://jayeshmepani.github.io/cssforge/social-image.jpg">
+  <meta name="twitter:image:alt" content="CSSForge — forward semantic CSS refactoring workbench, version 0.4.0">
 
-  <!-- Stylesheet -->
+  <!-- Favicon (embedded SVG) -->
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2310b981'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-family='Arial,sans-serif' font-size='28' font-weight='800' fill='white'%3ECF%3C/text%3E%3C/svg%3E">
+
+  <!-- Styles (critical path; no unused preload of the same resource) -->
   <link rel="stylesheet" href="style.css">
 
-  <!-- Google Fonts: Manrope, Space Grotesk & JetBrains Mono -->
+  <!-- Fonts: preconnect + non-blocking stylesheet; display=swap in URL -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap"
+    media="print" onload="this.media='all'">
+  <noscript>
+    <link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap">
+  </noscript>
 
-  <!-- Structured Data (JSON-LD) -->
+  <!-- Structured data (JSON-LD) — matches visible page content -->
   <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "SoftwareApplication",
-        "name": "CSSForge",
-        "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "Linux, macOS, Windows",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD"
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://jayeshmepani.github.io/cssforge/#software",
+          "name": "CSSForge",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": ["Linux", "macOS", "Windows"],
+          "softwareVersion": "0.4.0",
+          "url": "https://jayeshmepani.github.io/cssforge/",
+          "downloadUrl": "https://crates.io/crates/cssforge",
+          "installUrl": "https://github.com/jayeshmepani/cssforge/releases",
+          "codeRepository": "https://github.com/jayeshmepani/cssforge",
+          "description": "Safety-first semantic CSS refactoring and modernization workbench. 27 cascade-safe transformation rules for native nesting, :is() clusters, range media queries, layer-safe gather, and nest-layer-by-selector.",
+          "programmingLanguage": "Rust",
+          "license": "https://opensource.org/licenses/MIT",
+          "author": {
+            "@type": "Person",
+            "name": "Jayesh Mepani",
+            "url": "https://jayeshmepani.site",
+            "sameAs": ["https://github.com/jayeshmepani", "https://www.linkedin.com/in/jayeshmepani/"]
+          },
+          "keywords": [
+            "CSS refactoring",
+            "native CSS nesting",
+            "CSS modernization",
+            "Rust",
+            "TUI",
+            "cascade layers",
+            "nest-layer-by-selector"
+          ]
         },
-        "url": "https://jayeshmepani.github.io/cssforge/",
-        "downloadUrl": "https://crates.io/crates/cssforge",
-        "softwareVersion": "0.4.0",
-        "description": "Lossless, 100% cascade-safe, multi-platform semantic CSS refactoring engine and interactive terminal workbench written in Rust.",
-        "programmingLanguage": "Rust",
-        "license": "https://opensource.org/licenses/MIT",
-        "author": {
-          "@type": "Person",
-          "name": "Jayesh Mepani",
-          "url": "https://jayeshmepani.site",
-          "sameAs": ["https://github.com/jayeshmepani", "https://www.linkedin.com/in/jayeshmepani/"]
+        {
+          "@type": "TechArticle",
+          "@id": "https://jayeshmepani.github.io/cssforge/#article",
+          "name": "CSSForge Documentation",
+          "headline": "CSSForge Documentation — Forward Semantic CSS Refactoring and Modernization",
+          "url": "https://jayeshmepani.github.io/cssforge/",
+          "description": "Complete inventory of 27 CSSForge transformation rules, installation for Linux, macOS, and Windows, safety proofs, output modes, and crate architecture.",
+          "inLanguage": "en",
+          "image": "https://jayeshmepani.github.io/cssforge/social-image.jpg",
+          "about": { "@id": "https://jayeshmepani.github.io/cssforge/#software" },
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "CSSForge Documentation",
+            "url": "https://jayeshmepani.github.io/cssforge/"
+          },
+          "author": {
+            "@type": "Person",
+            "name": "Jayesh Mepani",
+            "url": "https://jayeshmepani.site"
+          }
+        },
+        {
+          "@type": "WebPage",
+          "@id": "https://jayeshmepani.github.io/cssforge/#webpage",
+          "url": "https://jayeshmepani.github.io/cssforge/",
+          "name": "CSSForge Documentation — Forward Semantic CSS Refactoring & Modernization",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "CSSForge Documentation",
+            "url": "https://jayeshmepani.github.io/cssforge/"
+          },
+          "primaryImageOfPage": {
+            "@type": "ImageObject",
+            "url": "https://jayeshmepani.github.io/cssforge/social-image.jpg",
+            "caption": "CSSForge — forward semantic CSS refactoring workbench, version 0.4.0"
+          },
+          "inLanguage": "en",
+          "about": { "@id": "https://jayeshmepani.github.io/cssforge/#software" }
         }
-      }
-    ]
-  }
+      ]
+    }
   </script>
 
-  <!-- Non-blocking theme snippet to prevent FOUC -->
+  <!-- Theme script (non-blocking, prevents FOUC) -->
   <script>
     (function () {
+      var root = document.documentElement;
       var stored = null;
-      try { stored = localStorage.getItem('cssforge-docs-theme'); } catch (e) {}
+      try { stored = localStorage.getItem('cssforge-docs-theme'); } catch (e) { /* private mode */ }
       var theme = stored === 'light' || stored === 'dark'
         ? stored
         : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      document.documentElement.setAttribute('data-theme', theme);
-      document.documentElement.style.colorScheme = theme;
+      root.setAttribute('data-theme', theme);
+      root.style.colorScheme = theme;
     })();
   </script>
+
+  <!-- Main script (deferred) -->
+  <script src="script.js" defer></script>
 </head>
 
 <body>
@@ -92,53 +162,83 @@
   <!-- Top Glassmorphic Navigation Bar -->
   <header class="site-header">
     <div class="header-left">
-      <button type="button" class="icon-btn menu-toggle-btn" id="menu-toggle-btn" aria-label="Toggle navigation menu">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <button type="button" class="icon-btn menu-toggle-btn" id="menu-toggle-btn" aria-controls="sidebar"
+        aria-expanded="false" aria-labelledby="menu-btn-label" title="Open navigation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          aria-hidden="true" focusable="false">
+          <path d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+        <span class="sr-only" id="menu-btn-label">Open navigation</span>
       </button>
 
       <a href="#overview" class="brand">
-        <div class="brand-logo">CF</div>
+        <div class="brand-logo" aria-hidden="true">CF</div>
         <span class="brand-title">CSSForge</span>
         <span class="version-badge">v0.4.0</span>
       </a>
     </div>
 
     <div class="header-right">
-      <button type="button" class="icon-btn" id="theme-toggle-btn" aria-label="Toggle dark/light color theme" title="Toggle theme">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      <button type="button" class="icon-btn" id="theme-toggle-btn" aria-pressed="false"
+        aria-labelledby="theme-btn-label" title="Switch to dark theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="4" />
+          <path
+            d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+        </svg>
+        <span class="sr-only" id="theme-btn-label">Toggle color theme</span>
       </button>
 
-      <a href="https://crates.io/crates/cssforge" class="icon-btn" target="_blank" rel="noopener" title="crates.io package">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+      <a href="https://crates.io/crates/cssforge" class="icon-btn" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"
+          focusable="false">
+          <path
+            d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+        </svg>
+        <span class="sr-only">CSSForge on crates.io (opens in a new tab)</span>
       </a>
 
-      <a href="https://github.com/jayeshmepani/cssforge" class="icon-btn" target="_blank" rel="noopener" title="GitHub repository">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+      <a href="https://github.com/jayeshmepani/cssforge" class="icon-btn" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+          <path
+            d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+        </svg>
+        <span class="sr-only">CSSForge on GitHub (opens in a new tab)</span>
       </a>
     </div>
   </header>
 
-  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
 
   <!-- App Main Shell -->
   <div class="app-shell">
     <!-- Sidebar Navigation -->
-    <aside class="sidebar" id="sidebar">
+    <nav class="sidebar" id="sidebar" aria-label="Documentation sections">
       <div class="sidebar-search-box">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="search" id="nav-search-input" placeholder="Search documentation..." autocomplete="off">
+        <label class="sr-only" for="nav-search-input">Filter topics</label>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"
+          focusable="false">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+        <input type="search" id="nav-search-input" placeholder="Search documentation…" autocomplete="off"
+          spellcheck="false" aria-describedby="nav-search-hint">
+        <p class="sr-only" id="nav-search-hint">Filters the section list below as you type. Press Escape to clear.</p>
       </div>
+      <p class="nav-empty sr-only" id="nav-empty" role="status" aria-live="polite" aria-atomic="true" hidden>No matching
+        topics.</p>
 
-      <div class="nav-section-title">Getting Started</div>
-      <ul class="nav-list">
-        <li><a href="#overview" class="active">Overview</a></li>
+      <div class="nav-section-title" id="nav-group-started">Getting Started</div>
+      <ul class="nav-list" aria-labelledby="nav-group-started">
+        <li><a href="#overview" class="active" aria-current="page">Overview</a></li>
         <li><a href="#installation">Installation Guide</a></li>
         <li><a href="#quickstart">Quick Start &amp; Usage</a></li>
         <li><a href="#tui-simulator">TUI Visual Workbench</a></li>
       </ul>
 
-      <div class="nav-section-title">Transformation Engine</div>
-      <ul class="nav-list">
+      <div class="nav-section-title" id="nav-group-engine">Transformation Engine</div>
+      <ul class="nav-list" aria-labelledby="nav-group-engine">
         <li><a href="#rules">27 Rules Catalog</a></li>
         <li><a href="#safety-proof">8-Point Proof Engine</a></li>
         <li><a href="#why-cssforge">Why CSSForge &amp; Gaps Filled</a></li>
@@ -148,39 +248,46 @@
         <li><a href="#crates">Workspace Crates</a></li>
       </ul>
 
-      <div class="nav-section-title">Ecosystem Links</div>
-      <ul class="nav-list">
-        <li><a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener">crates.io / cssforge ↗</a></li>
-        <li><a href="https://docs.rs/cssforge-core" target="_blank" rel="noopener">Docs.rs API ↗</a></li>
-        <li><a href="https://github.com/jayeshmepani/cssforge" target="_blank" rel="noopener">GitHub Source ↗</a></li>
+      <div class="nav-section-title" id="nav-group-links">Ecosystem Links</div>
+      <ul class="nav-list" aria-labelledby="nav-group-links">
+        <li><a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener noreferrer">crates.io / cssforge
+            (opens in a new tab)</a></li>
+        <li><a href="https://docs.rs/cssforge-core" target="_blank" rel="noopener noreferrer">Docs.rs API (opens in a
+            new tab)</a></li>
+        <li><a href="https://github.com/jayeshmepani/cssforge" target="_blank" rel="noopener noreferrer">GitHub Source
+            (opens in a new tab)</a></li>
       </ul>
-    </aside>
+    </nav>
 
     <!-- Main Content Column -->
     <main class="content-col" id="main-content">
       <!-- Hero Section -->
       <section class="hero-section" id="overview">
         <div class="hero-badges-row">
-          <a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener">
+          <a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener noreferrer">
             <img src="https://img.shields.io/crates/v/cssforge.svg?style=flat-square" alt="crates.io version">
           </a>
-          <a href="https://www.rust-lang.org" target="_blank" rel="noopener">
+          <a href="https://www.rust-lang.org" target="_blank" rel="noopener noreferrer">
             <img src="https://img.shields.io/badge/rust-1.85%2B-blue.svg?style=flat-square" alt="rust version">
           </a>
-          <a href="https://www.rust-lang.org" target="_blank" rel="noopener">
+          <a href="https://www.rust-lang.org" target="_blank" rel="noopener noreferrer">
             <img src="https://img.shields.io/badge/edition-2024-blue.svg?style=flat-square" alt="rust edition">
           </a>
-          <a href="https://github.com/jayeshmepani/cssforge/blob/main/LICENSE" target="_blank" rel="noopener">
+          <a href="https://github.com/jayeshmepani/cssforge/blob/main/LICENSE" target="_blank"
+            rel="noopener noreferrer">
             <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license">
           </a>
-          <a href="https://github.com/jayeshmepani/cssforge/releases" target="_blank" rel="noopener">
+          <a href="https://github.com/jayeshmepani/cssforge/releases" target="_blank" rel="noopener noreferrer">
             <img src="https://img.shields.io/badge/status-stable-brightgreen.svg?style=flat-square" alt="status">
           </a>
         </div>
 
         <h1>Forward Semantic CSS Refactoring &amp; Modernization</h1>
         <p class="hero-lead">
-          CSSForge is a blazing-fast, 100% cascade-safe, multi-platform CSS transformation engine and interactive terminal workbench written in Rust. Refactor flat legacy CSS into modern native nesting, <code>:is()</code> clusters, and Range media queries with <strong>zero declaration loss</strong> and mathematical specificity proof guarantees.
+          CSSForge is a blazing-fast, 100% cascade-safe, multi-platform CSS transformation engine and interactive
+          terminal workbench written in Rust. Refactor flat legacy CSS into modern native nesting, <code>:is()</code>
+          clusters, and Range media queries with <strong>zero declaration loss</strong> and mathematical specificity
+          proof guarantees.
         </p>
 
         <div class="hero-cta-group">
@@ -192,14 +299,19 @@
       <!-- Installation Guide -->
       <section id="installation">
         <h2>📦 Installation</h2>
-        <p>Install CSSForge globally across all major platforms using Cargo or download pre-compiled standalone binary releases:</p>
+        <p>Install CSSForge globally across all major platforms using Cargo or download pre-compiled standalone binary
+          releases:</p>
 
         <div class="tab-container">
           <div class="tab-buttons" role="tablist" aria-label="Installation platform options">
-            <button type="button" class="tab-btn active" role="tab" id="tab-cargo" aria-selected="true" aria-controls="pane-cargo" data-tab="cargo">Cargo (All Platforms)</button>
-            <button type="button" class="tab-btn" role="tab" id="tab-linux" aria-selected="false" aria-controls="pane-linux" data-tab="linux">Linux (x64 / ARM64)</button>
-            <button type="button" class="tab-btn" role="tab" id="tab-macos" aria-selected="false" aria-controls="pane-macos" data-tab="macos">macOS (Apple Silicon)</button>
-            <button type="button" class="tab-btn" role="tab" id="tab-windows" aria-selected="false" aria-controls="pane-windows" data-tab="windows">Windows (x64 / Snapdragon)</button>
+            <button type="button" class="tab-btn active" role="tab" id="tab-cargo" aria-selected="true"
+              aria-controls="pane-cargo" data-tab="cargo">Cargo (All Platforms)</button>
+            <button type="button" class="tab-btn" role="tab" id="tab-linux" aria-selected="false"
+              aria-controls="pane-linux" data-tab="linux">Linux (x64 / ARM64)</button>
+            <button type="button" class="tab-btn" role="tab" id="tab-macos" aria-selected="false"
+              aria-controls="pane-macos" data-tab="macos">macOS (Apple Silicon)</button>
+            <button type="button" class="tab-btn" role="tab" id="tab-windows" aria-selected="false"
+              aria-controls="pane-windows" data-tab="windows">Windows (x64 / Snapdragon)</button>
           </div>
 
           <!-- Cargo Pane -->
@@ -210,8 +322,11 @@
           </div>
 
           <!-- Linux Pane -->
-          <div class="tab-pane" role="tabpanel" id="pane-linux" aria-labelledby="tab-linux" data-tab="linux">
-            <p>1. Download the archive for your architecture from <a href="https://github.com/jayeshmepani/cssforge/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
+          <div class="tab-pane" role="tabpanel" id="pane-linux" aria-labelledby="tab-linux" data-tab="linux" hidden>
+            <p>1. Download the archive for your architecture from <a
+                href="https://github.com/jayeshmepani/cssforge/releases" target="_blank"
+                rel="noopener noreferrer">GitHub
+                Releases</a>.</p>
             <p>2. Extract and copy to your local user binary directory (no <code>sudo</code> required):</p>
             <pre><code>tar -xvf cssforge-v0.4.0-linux-x64.tar.gz
 cp cssforge-v0.4.0-linux-x64/cssforge ~/.local/bin/
@@ -220,8 +335,11 @@ chmod +x ~/.local/bin/cssforge</code></pre>
           </div>
 
           <!-- macOS Pane -->
-          <div class="tab-pane" role="tabpanel" id="pane-macos" aria-labelledby="tab-macos" data-tab="macos">
-            <p>1. Download <code>cssforge-v0.4.0-macos-arm64.tar.gz</code> from <a href="https://github.com/jayeshmepani/cssforge/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
+          <div class="tab-pane" role="tabpanel" id="pane-macos" aria-labelledby="tab-macos" data-tab="macos" hidden>
+            <p>1. Download <code>cssforge-v0.4.0-macos-arm64.tar.gz</code> from <a
+                href="https://github.com/jayeshmepani/cssforge/releases" target="_blank"
+                rel="noopener noreferrer">GitHub
+                Releases</a>.</p>
             <p>2. Extract and copy to user path:</p>
             <pre><code>tar -xvf cssforge-v0.4.0-macos-arm64.tar.gz
 cp cssforge-v0.4.0-macos-arm64/cssforge ~/.local/bin/
@@ -230,8 +348,14 @@ chmod +x ~/.local/bin/cssforge</code></pre>
           </div>
 
           <!-- Windows Pane -->
-          <div class="tab-pane" role="tabpanel" id="pane-windows" aria-labelledby="tab-windows" data-tab="windows">
-            <p>1. Download <code>cssforge-v0.4.0-windows-x64.zip</code> or <code>cssforge-v0.4.0-windows-arm64.zip</code> from <a href="https://github.com/jayeshmepani/cssforge/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
+          <div class="tab-pane" role="tabpanel" id="pane-windows" aria-labelledby="tab-windows" data-tab="windows"
+            hidden>
+            <p>1. Download <code>cssforge-v0.4.0-windows-x64.zip</code> or
+              <code>cssforge-v0.4.0-windows-arm64.zip</code> from <a
+                href="https://github.com/jayeshmepani/cssforge/releases" target="_blank"
+                rel="noopener noreferrer">GitHub
+                Releases</a>.
+            </p>
             <p>2. Extract <code>cssforge.exe</code> and add its folder to your system <code>Path</code>.</p>
             <pre><code># In PowerShell or CMD:
 cssforge.exe --version</code></pre>
@@ -242,7 +366,8 @@ cssforge.exe --version</code></pre>
       <!-- Quick Start -->
       <section id="quickstart">
         <h2>🚀 Quick Start &amp; Usage</h2>
-        <p>CSSForge automatically discovers CSS files in the <strong>current working directory</strong> where you execute it:</p>
+        <p>CSSForge automatically discovers CSS files in the <strong>current working directory</strong> where you
+          execute it:</p>
 
         <h3>1. Run in Any Project Directory (Automatic Discovery)</h3>
         <pre><code># 1. Navigate to your project folder:
@@ -273,15 +398,31 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
 
         <div class="callout-card" style="margin-top: 2rem;">
           <h3>📁 Smart File Discovery &amp; Default Ignored Conventions</h3>
-          <p>When scanning directories recursively, CSSForge applies <strong>zero-config safety ignore filters</strong> to prevent accidental corruption of generated files or vendor libraries:</p>
-          <ul style="margin: 0.75rem 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: var(--text-sm);">
-            <li><strong>Build &amp; Dependency Folders</strong> (<code>node_modules/</code>, <code>vendor/</code>, <code>target/</code>, <code>dist/</code>, <code>build/</code>, <code>out/</code>, <code>.next/</code>, <code>.nuxt/</code>, <code>.turbo/</code>, <code>.svelte-kit/</code>): Ignored to protect compiled bundles and 3rd-party dependencies.</li>
-            <li><strong>Version Control Internals</strong> (<code>.git/</code>, <code>.hg/</code>, <code>.svn/</code>, <code>.cache/</code>): Ignored to keep repo metadata safe.</li>
-            <li><strong>Generated Modern Files</strong> (<code>*.modern.css</code>): Ignored to prevent recursive re-modernization loops on newly generated output.</li>
-            <li><strong>Minified &amp; Chunks</strong> (<code>*.min.css</code>, <code>*.bundle.css</code>, <code>*.chunk.css</code>, <code>*.map.css</code>): Ignored because minified code is not meant for source AST refactoring.</li>
-            <li><strong>Safety Backups</strong> (<code>*.bak.css</code>, <code>*.backup.css</code>): Preserved as untouched recovery snapshots.</li>
+          <p>When scanning directories recursively, CSSForge applies <strong>zero-config safety ignore filters</strong>
+            to prevent accidental corruption of generated files or vendor libraries:</p>
+          <ul
+            style="margin: 0.75rem 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: var(--text-sm);">
+            <li><strong>Build &amp; Dependency Folders</strong> (<code>node_modules/</code>, <code>vendor/</code>,
+              <code>target/</code>, <code>dist/</code>, <code>build/</code>, <code>out/</code>, <code>.next/</code>,
+              <code>.nuxt/</code>, <code>.turbo/</code>, <code>.svelte-kit/</code>): Ignored to protect compiled bundles
+              and 3rd-party dependencies.
+            </li>
+            <li><strong>Version Control Internals</strong> (<code>.git/</code>, <code>.hg/</code>, <code>.svn/</code>,
+              <code>.cache/</code>): Ignored to keep repo metadata safe.
+            </li>
+            <li><strong>Generated Modern Files</strong> (<code>*.modern.css</code>): Ignored to prevent recursive
+              re-modernization loops on newly generated output.</li>
+            <li><strong>Minified &amp; Chunks</strong> (<code>*.min.css</code>, <code>*.bundle.css</code>,
+              <code>*.chunk.css</code>, <code>*.map.css</code>): Ignored because minified code is not meant for source
+              AST refactoring.
+            </li>
+            <li><strong>Safety Backups</strong> (<code>*.bak.css</code>, <code>*.backup.css</code>): Preserved as
+              untouched recovery snapshots.</li>
           </ul>
-          <p style="margin-top: 0.75rem; font-size: var(--text-xs); color: var(--text-secondary);"><em>Note: If you explicitly pass a file path (e.g. <code>cssforge interactive ./dist/custom.min.css</code>), CSSForge honors your explicit request. Standard <code>.gitignore</code> and <code>.ignore</code> files are also respected automatically.</em></p>
+          <p style="margin-top: 0.75rem; font-size: var(--text-xs); color: var(--text-secondary);"><em>Note: If you
+              explicitly pass a file path (e.g. <code>cssforge interactive ./dist/custom.min.css</code>), CSSForge
+              honors your explicit request. Standard <code>.gitignore</code> and <code>.ignore</code> files are also
+              respected automatically.</em></p>
         </div>
       </section>
 
@@ -305,18 +446,21 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
  \____|____/____/|_|   \___/|_| \_\\____|_____|</pre>
             <div class="term-dim">Forward semantic CSS modernization • nest • refactor • review</div>
             <br>
-            <div class="term-prompt">Choose the CSS files you want to modernize. Press [Space] to toggle, [a] for all:</div>
+            <div class="term-prompt">Choose the CSS files you want to modernize. Press [Space] to toggle, [a] for all:
+            </div>
             <br>
             <div>[x] src/components/card.css</div>
             <div>[x] src/components/button.css</div>
             <div>[x] src/styles/theme.css</div>
             <br>
-            <div class="term-accent">[Enter] Next: Rules →   [Space] Toggle   [p] Preset: Modern   [d] Live Diff   [q] Quit</div>
+            <div class="term-accent">[Enter] Next: Rules → [Space] Toggle [p] Preset: Modern [d] Live Diff [q] Quit
+            </div>
           </div>
         </div>
 
         <div class="table-wrapper">
           <table>
+            <caption class="sr-only">CSSForge TUI keyboard shortcuts</caption>
             <thead>
               <tr>
                 <th>Keybinding</th>
@@ -324,14 +468,40 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               </tr>
             </thead>
             <tbody>
-              <tr><td><code>[Enter]</code></td><td>Advance to next step / Apply &amp; Finish</td></tr>
-              <tr><td><code>[Space]</code></td><td>Toggle highlighted file, rule, or setting</td></tr>
-              <tr><td><code>[a]</code></td><td>Select / Deselect All</td></tr>
-              <tr><td><code>[p]</code></td><td>Cycle presets (<code>Conservative</code> ➔ <code>Modern</code> ➔ <code>Refactor</code> ➔ <code>Aggressive</code>)</td></tr>
-              <tr><td><code>[d]</code> / <code>[v]</code></td><td>Open live full-screen split/unified code diff viewer</td></tr>
-              <tr><td><code>[Esc]</code> / <code>[b]</code></td><td>Go back to previous step</td></tr>
-              <tr><td><code>[1]</code>…<code>[4]</code></td><td>Jump directly to Step 1 (Files), 2 (Rules), 3 (Output), 4 (Done)</td></tr>
-              <tr><td><code>[q]</code></td><td>Quit workbench</td></tr>
+              <tr>
+                <td><code>[Enter]</code></td>
+                <td>Advance to next step / Apply &amp; Finish</td>
+              </tr>
+              <tr>
+                <td><code>[Space]</code></td>
+                <td>Toggle highlighted file, rule, or setting</td>
+              </tr>
+              <tr>
+                <td><code>[a]</code></td>
+                <td>Select / Deselect All</td>
+              </tr>
+              <tr>
+                <td><code>[p]</code></td>
+                <td>Cycle presets (<code>Conservative</code> ➔ <code>Modern</code> ➔ <code>Refactor</code> ➔
+                  <code>Aggressive</code>)
+                </td>
+              </tr>
+              <tr>
+                <td><code>[d]</code> / <code>[v]</code></td>
+                <td>Open live full-screen split/unified code diff viewer</td>
+              </tr>
+              <tr>
+                <td><code>[Esc]</code> / <code>[b]</code></td>
+                <td>Go back to previous step</td>
+              </tr>
+              <tr>
+                <td><code>[1]</code>…<code>[4]</code></td>
+                <td>Jump directly to Step 1 (Files), 2 (Rules), 3 (Output), 4 (Done)</td>
+              </tr>
+              <tr>
+                <td><code>[q]</code></td>
+                <td>Quit workbench</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -340,12 +510,20 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
       <!-- 27 Rules Catalog -->
       <section id="rules">
         <h2>⚙️ 27 Transformation Rules Catalog</h2>
-        <p>Explore the complete inventory of 27 automated refactoring and modernization rules, including the new <code>nest-layer-by-selector</code> rule:</p>
+        <p>Explore the complete inventory of 27 automated refactoring and modernization rules, including the new
+          <code>nest-layer-by-selector</code> rule:
+        </p>
 
         <div class="rule-filter-controls">
           <div class="rule-search-input-wrapper">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input type="text" id="rule-search-input" placeholder="Filter rules by name, keyword, or selector type...">
+            <label class="sr-only" for="rule-search-input">Filter transformation rules</label>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"
+              focusable="false">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            <input type="search" id="rule-search-input" placeholder="Filter rules by name, keyword, or selector type…"
+              autocomplete="off" spellcheck="false" aria-controls="rule-catalog" aria-describedby="rule-search-live">
           </div>
 
           <div class="filter-dropdown-and-pills-row">
@@ -359,7 +537,7 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
             </select>
 
             <div class="category-pills">
-              <button type="button" class="pill-btn active" data-category="all">All (27)</button>
+              <button type="button" class="pill-btn active" data-category="all" aria-pressed="true">All (27)</button>
               <button type="button" class="pill-btn" data-category="nesting">Safe Nesting (7)</button>
               <button type="button" class="pill-btn" data-category="atrules">Conditional At-Rules (4)</button>
               <button type="button" class="pill-btn" data-category="modernize">Modern Selectors (4)</button>
@@ -367,17 +545,20 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <button type="button" class="pill-btn" data-category="dedupe">Deduplication &amp; Pruning (5)</button>
             </div>
           </div>
-          <div id="rule-search-live" class="sr-only" aria-live="polite" aria-atomic="true">Showing all 27 transformation rules</div>
+          <div id="rule-search-live" class="sr-only" aria-live="polite" aria-atomic="true">Showing all 27 transformation
+            rules</div>
         </div>
 
-        <div class="rules-grid">
+        <div class="rules-grid" id="rule-catalog">
           <!-- 1 -->
           <div class="rule-card" data-category="nesting">
             <div class="rule-card-top">
               <span class="rule-id">nest-pseudo-class</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Nests adjacent pseudo-states (<code>:hover</code>, <code>:focus</code>, <code>:active</code>, <code>:focus-visible</code>) into the parent rule using <code>&</code>.</div>
+            <div class="rule-card-desc">Nests adjacent pseudo-states (<code>:hover</code>, <code>:focus</code>,
+              <code>:active</code>, <code>:focus-visible</code>) into the parent rule using <code>&</code>.
+            </div>
             <div class="diff-snippet">
               <div class="diff-sub">- .card:hover { border-color: blue; }</div>
               <div class="diff-add">+ .card { &:hover { border-color: blue; } }</div>
@@ -390,7 +571,9 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">nest-pseudo-element</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Nests pseudo-elements (<code>::before</code>, <code>::after</code>, <code>::placeholder</code>) into the parent rule using <code>&</code>.</div>
+            <div class="rule-card-desc">Nests pseudo-elements (<code>::before</code>, <code>::after</code>,
+              <code>::placeholder</code>) into the parent rule using <code>&</code>.
+            </div>
             <div class="diff-snippet">
               <div class="diff-sub">- .btn::before { content: ""; }</div>
               <div class="diff-add">+ .btn { &::before { content: ""; } }</div>
@@ -403,7 +586,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">nest-attribute</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Nests attribute selectors (<code>[disabled]</code>, <code>[aria-*]</code>) into the parent rule cleanly.</div>
+            <div class="rule-card-desc">Nests attribute selectors (<code>[disabled]</code>, <code>[aria-*]</code>) into
+              the parent rule cleanly.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- input[disabled] { opacity: 0.5; }</div>
               <div class="diff-add">+ input { &[disabled] { opacity: 0.5; } }</div>
@@ -416,7 +600,9 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">nest-compound</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Nests compound class variants (<code>.item.active</code>, <code>.btn.primary</code>) into the parent rule.</div>
+            <div class="rule-card-desc">Nests compound class variants (<code>.item.active</code>,
+              <code>.btn.primary</code>) into the parent rule.
+            </div>
             <div class="diff-snippet">
               <div class="diff-sub">- .item.active { font-weight: bold; }</div>
               <div class="diff-add">+ .item { &.active { font-weight: bold; } }</div>
@@ -429,7 +615,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">nest-descendant</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Nests descendant selectors into the parent rule without redundant string prefixes.</div>
+            <div class="rule-card-desc">Nests descendant selectors into the parent rule without redundant string
+              prefixes.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- .card .title { font-size: 1.5rem; }</div>
               <div class="diff-add">+ .card { .title { font-size: 1.5rem; } }</div>
@@ -442,7 +629,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">nest-combinator</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Nests child (<code>></code>), adjacent sibling (<code>+</code>), and general sibling (<code>~</code>) selectors.</div>
+            <div class="rule-card-desc">Nests child (<code>></code>), adjacent sibling (<code>+</code>), and general
+              sibling (<code>~</code>) selectors.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- .nav > .item { display: inline-block; }</div>
               <div class="diff-add">+ .nav { > .item { display: inline-block; } }</div>
@@ -455,7 +643,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">factor-selector-list</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Factors comma-separated selector lists sharing a base selector into a unified nested block.</div>
+            <div class="rule-card-desc">Factors comma-separated selector lists sharing a base selector into a unified
+              nested block.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- .dot, .dot::before { color: red; }</div>
               <div class="diff-add">+ .dot { &, &::before { color: red; } }</div>
@@ -468,7 +657,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">nest-media</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Inlines matching <code>@media</code> queries directly into the parent selector block without breaking cascade.</div>
+            <div class="rule-card-desc">Inlines matching <code>@media</code> queries directly into the parent selector
+              block without breaking cascade.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- @media (min-width: 768px) { .box { padding: 2rem; } }</div>
               <div class="diff-add">+ .box { @media (min-width: 768px) { padding: 2rem; } }</div>
@@ -481,7 +671,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">nest-supports</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Inlines <code>@supports</code> feature queries directly into the parent selector block.</div>
+            <div class="rule-card-desc">Inlines <code>@supports</code> feature queries directly into the parent selector
+              block.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- @supports (display: grid) { .box { display: grid; } }</div>
               <div class="diff-add">+ .box { @supports (display: grid) { display: grid; } }</div>
@@ -494,7 +685,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">nest-container</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Inlines container queries (<code>@container</code>) directly into the target component block.</div>
+            <div class="rule-card-desc">Inlines container queries (<code>@container</code>) directly into the target
+              component block.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- @container (min-width: 400px) { .card { flex-direction: row; } }</div>
               <div class="diff-add">+ .card { @container (min-width: 400px) { flex-direction: row; } }</div>
@@ -507,7 +699,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">nest-starting-style</span>
               <span class="badge badge-safe">Safe</span>
             </div>
-            <div class="rule-card-desc">Inlines <code>@starting-style</code> transition entry rules directly into the target selector.</div>
+            <div class="rule-card-desc">Inlines <code>@starting-style</code> transition entry rules directly into the
+              target selector.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- @starting-style { dialog { opacity: 0; } }</div>
               <div class="diff-add">+ dialog { @starting-style { opacity: 0; } }</div>
@@ -520,7 +713,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">consolidate-not</span>
               <span class="badge badge-modern">Modernize</span>
             </div>
-            <div class="rule-card-desc">Consolidates chained legacy <code>:not()</code> selectors into a single comma-separated <code>:not(a, b)</code>.</div>
+            <div class="rule-card-desc">Consolidates chained legacy <code>:not()</code> selectors into a single
+              comma-separated <code>:not(a, b)</code>.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- .btn:not(.primary):not(.secondary)</div>
               <div class="diff-add">+ .btn:not(.primary, .secondary)</div>
@@ -533,7 +727,9 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">modernize-is</span>
               <span class="badge badge-modern">Modernize</span>
             </div>
-            <div class="rule-card-desc">Factors multi-selector clusters sharing identical bases into unified <code>:is(...)</code> blocks with nested rules.</div>
+            <div class="rule-card-desc">Factors multi-selector clusters sharing identical bases into unified
+              <code>:is(...)</code> blocks with nested rules.
+            </div>
             <div class="diff-snippet">
               <div class="diff-sub">- .a .title, #hero .title { font-size: 1.2rem; }</div>
               <div class="diff-add">+ :is(.a, #hero) { .title { font-size: 1.2rem; } }</div>
@@ -546,7 +742,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="rule-id">modernize-where</span>
               <span class="badge badge-modern">Modernize</span>
             </div>
-            <div class="rule-card-desc">Factors default rules into <code>:where(...)</code> blocks for zero-specificity design system defaults.</div>
+            <div class="rule-card-desc">Factors default rules into <code>:where(...)</code> blocks for zero-specificity
+              design system defaults.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- .card, .panel, .dialog { border: 1px solid #ccc; }</div>
               <div class="diff-add">+ :where(.card, .panel, .dialog) { border: 1px solid #ccc; }</div>
@@ -562,175 +759,195 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
             <div class="rule-card-desc">Converts legacy min/max-width queries to modern CSS Range syntax.</div>
             <div class="diff-snippet">
               <div class="diff-sub">- @media (min-width: 768px) and (max-width: 1024px)</div>
-              <div class="diff-add">+ @media (768px <= width <= 1024px)</div>
+              <div class="diff-add">+ @media (768px <= width <=1024px)</div>
+              </div>
             </div>
-          </div>
 
-          <!-- 16 -->
-          <div class="rule-card" data-category="merging">
-            <div class="rule-card-top">
-              <span class="rule-id">merge-same-named-layer</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 16 -->
+            <div class="rule-card" data-category="merging">
+              <div class="rule-card-top">
+                <span class="rule-id">merge-same-named-layer</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Consolidates separated blocks of the same named <code>@layer</code> into their
+                canonical first block.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- @layer comps { ... } /* later */ @layer comps { ... }</div>
+                <div class="diff-add">+ @layer comps { /* unified block */ }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Consolidates separated blocks of the same named <code>@layer</code> into their canonical first block.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- @layer comps { ... } /* later */ @layer comps { ... }</div>
-              <div class="diff-add">+ @layer comps { /* unified block */ }</div>
-            </div>
-          </div>
 
-          <!-- 17 -->
-          <div class="rule-card" data-category="merging">
-            <div class="rule-card-top">
-              <span class="rule-id">merge-adjacent-media</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 17 -->
+            <div class="rule-card" data-category="merging">
+              <div class="rule-card-top">
+                <span class="rule-id">merge-adjacent-media</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Combines consecutive <code>@media</code> blocks sharing identical query
+                conditions into a single block.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- @media (min-width: 600px) { .a {} } @media (min-width: 600px) { .b {} }</div>
+                <div class="diff-add">+ @media (min-width: 600px) { .a {} .b {} }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Combines consecutive <code>@media</code> blocks sharing identical query conditions into a single block.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- @media (min-width: 600px) { .a {} } @media (min-width: 600px) { .b {} }</div>
-              <div class="diff-add">+ @media (min-width: 600px) { .a {} .b {} }</div>
-            </div>
-          </div>
 
-          <!-- 18 -->
-          <div class="rule-card" data-category="merging">
-            <div class="rule-card-top">
-              <span class="rule-id">merge-adjacent-supports</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 18 -->
+            <div class="rule-card" data-category="merging">
+              <div class="rule-card-top">
+                <span class="rule-id">merge-adjacent-supports</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Combines consecutive <code>@supports</code> blocks sharing identical feature
+                conditions into a single block.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- @supports (display: grid) { ... } @supports (display: grid) { ... }</div>
+                <div class="diff-add">+ @supports (display: grid) { /* combined */ }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Combines consecutive <code>@supports</code> blocks sharing identical feature conditions into a single block.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- @supports (display: grid) { ... } @supports (display: grid) { ... }</div>
-              <div class="diff-add">+ @supports (display: grid) { /* combined */ }</div>
-            </div>
-          </div>
 
-          <!-- 19 -->
-          <div class="rule-card" data-category="merging">
-            <div class="rule-card-top">
-              <span class="rule-id">merge-adjacent-container</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 19 -->
+            <div class="rule-card" data-category="merging">
+              <div class="rule-card-top">
+                <span class="rule-id">merge-adjacent-container</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Combines consecutive <code>@container</code> blocks sharing identical query
+                conditions.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- @container (min-width: 400px) { .x {} } @container (min-width: 400px) { .y {} }
+                </div>
+                <div class="diff-add">+ @container (min-width: 400px) { .x {} .y {} }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Combines consecutive <code>@container</code> blocks sharing identical query conditions.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- @container (min-width: 400px) { .x {} } @container (min-width: 400px) { .y {} }</div>
-              <div class="diff-add">+ @container (min-width: 400px) { .x {} .y {} }</div>
-            </div>
-          </div>
 
-          <!-- 20 -->
-          <div class="rule-card" data-category="merging">
-            <div class="rule-card-top">
-              <span class="rule-id">merge-identical-scope</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 20 -->
+            <div class="rule-card" data-category="merging">
+              <div class="rule-card-top">
+                <span class="rule-id">merge-identical-scope</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Combines consecutive <code>@scope</code> blocks sharing identical root and
+                limit parameters.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- @scope (.card) { ... } @scope (.card) { ... }</div>
+                <div class="diff-add">+ @scope (.card) { /* combined */ }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Combines consecutive <code>@scope</code> blocks sharing identical root and limit parameters.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- @scope (.card) { ... } @scope (.card) { ... }</div>
-              <div class="diff-add">+ @scope (.card) { /* combined */ }</div>
-            </div>
-          </div>
 
-          <!-- 21 -->
-          <div class="rule-card" data-category="merging">
-            <div class="rule-card-top">
-              <span class="rule-id">merge-identical-starting-style</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 21 -->
+            <div class="rule-card" data-category="merging">
+              <div class="rule-card-top">
+                <span class="rule-id">merge-identical-starting-style</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Combines consecutive top-level <code>@starting-style</code> blocks into a
+                single block.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- @starting-style { ... } @starting-style { ... }</div>
+                <div class="diff-add">+ @starting-style { /* combined */ }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Combines consecutive top-level <code>@starting-style</code> blocks into a single block.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- @starting-style { ... } @starting-style { ... }</div>
-              <div class="diff-add">+ @starting-style { /* combined */ }</div>
-            </div>
-          </div>
 
-          <!-- 22 -->
-          <div class="rule-card" data-category="dedupe">
-            <div class="rule-card-top">
-              <span class="rule-id">merge-adjacent-identical-selector</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 22 -->
+            <div class="rule-card" data-category="dedupe">
+              <div class="rule-card-top">
+                <span class="rule-id">merge-adjacent-identical-selector</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Combines consecutive style rules sharing the exact same selector into a single
+                declaration block.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- .btn { color: red; } .btn { padding: 1rem; }</div>
+                <div class="diff-add">+ .btn { color: red; padding: 1rem; }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Combines consecutive style rules sharing the exact same selector into a single declaration block.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- .btn { color: red; } .btn { padding: 1rem; }</div>
-              <div class="diff-add">+ .btn { color: red; padding: 1rem; }</div>
-            </div>
-          </div>
 
-          <!-- 23 -->
-          <div class="rule-card" data-category="dedupe">
-            <div class="rule-card-top">
-              <span class="rule-id">merge-identical-rule-bodies</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 23 -->
+            <div class="rule-card" data-category="dedupe">
+              <div class="rule-card-top">
+                <span class="rule-id">merge-identical-rule-bodies</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Combines selectors sharing identical declaration bodies into a unified
+                comma-separated rule.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- .a { color: red; } .b { color: red; }</div>
+                <div class="diff-add">+ .a, .b { color: red; }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Combines selectors sharing identical declaration bodies into a unified comma-separated rule.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- .a { color: red; } .b { color: red; }</div>
-              <div class="diff-add">+ .a, .b { color: red; }</div>
-            </div>
-          </div>
 
-          <!-- 24 -->
-          <div class="rule-card" data-category="dedupe">
-            <div class="rule-card-top">
-              <span class="rule-id">factor-identical-states-with-is</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 24 -->
+            <div class="rule-card" data-category="dedupe">
+              <div class="rule-card-top">
+                <span class="rule-id">factor-identical-states-with-is</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Combines multiple states of the same element sharing identical declarations
+                into <code>&:is(:hover, :focus)</code>.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- .btn:hover, .btn:focus { background: blue; }</div>
+                <div class="diff-add">+ .btn { &:is(:hover, :focus) { background: blue; } }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Combines multiple states of the same element sharing identical declarations into <code>&:is(:hover, :focus)</code>.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- .btn:hover, .btn:focus { background: blue; }</div>
-              <div class="diff-add">+ .btn { &:is(:hover, :focus) { background: blue; } }</div>
-            </div>
-          </div>
 
-          <!-- 25 -->
-          <div class="rule-card" data-category="dedupe">
-            <div class="rule-card-top">
-              <span class="rule-id">gather-related-selector-rules</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 25 -->
+            <div class="rule-card" data-category="dedupe">
+              <div class="rule-card-top">
+                <span class="rule-id">gather-related-selector-rules</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Gathers scattered related rules into the strongest existing parent
+                <strong>within the same cascade layer</strong>. Does not move declarations between named
+                <code>@layer</code> blocks.
+              </div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- .box { padding: 1rem; } /* later */ .box { margin: 0; }</div>
+                <div class="diff-add">+ .box { padding: 1rem; margin: 0; }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">Gathers scattered related rules into the strongest existing parent <strong>within the same cascade layer</strong>. Does not move declarations between named <code>@layer</code> blocks.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- .box { padding: 1rem; } /* later */ .box { margin: 0; }</div>
-              <div class="diff-add">+ .box { padding: 1rem; margin: 0; }</div>
-            </div>
-          </div>
 
-          <!-- 26 -->
-          <div class="rule-card" data-category="merging">
-            <div class="rule-card-top">
-              <span class="rule-id">nest-layer-by-selector</span>
-              <span class="badge badge-refactor">Refactor</span>
+            <!-- 26 -->
+            <div class="rule-card" data-category="merging">
+              <div class="rule-card-top">
+                <span class="rule-id">nest-layer-by-selector</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">27th rule. Factors the exact same selector living in multiple named
+                <code>@layer</code> blocks into <code>.sel { @layer a { … } @layer b { … } }</code>. Preserves layer
+                identity and first-declared layer order. Never nests <code>@layer</code> inside another
+                <code>@layer</code> (that would create a child layer).
+              </div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- @layer tokens { :root { A } } @layer base { :root { B } }</div>
+                <div class="diff-add">+ :root { @layer tokens { A } @layer base { B } }</div>
+              </div>
             </div>
-            <div class="rule-card-desc">27th rule. Factors the exact same selector living in multiple named <code>@layer</code> blocks into <code>.sel { @layer a { … } @layer b { … } }</code>. Preserves layer identity and first-declared layer order. Never nests <code>@layer</code> inside another <code>@layer</code> (that would create a child layer).</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- @layer tokens { :root { A } } @layer base { :root { B } }</div>
-              <div class="diff-add">+ :root { @layer tokens { A } @layer base { B } }</div>
-            </div>
-          </div>
 
-          <!-- 27 -->
-          <div class="rule-card" data-category="dedupe">
-            <div class="rule-card-top">
-              <span class="rule-id">prune-overridden-declarations</span>
-              <span class="badge badge-refactor">Refactor</span>
-            </div>
-            <div class="rule-card-desc">Removes dead properties and entire rules overridden unconditionally later in the cascade.</div>
-            <div class="diff-snippet">
-              <div class="diff-sub">- color: red;</div>
-              <div class="diff-add">+ color: blue; /* kept winning override */</div>
+            <!-- 27 -->
+            <div class="rule-card" data-category="dedupe">
+              <div class="rule-card-top">
+                <span class="rule-id">prune-overridden-declarations</span>
+                <span class="badge badge-refactor">Refactor</span>
+              </div>
+              <div class="rule-card-desc">Removes dead properties and entire rules overridden unconditionally later in
+                the cascade.</div>
+              <div class="diff-snippet">
+                <div class="diff-sub">- color: red;</div>
+                <div class="diff-add">+ color: blue; /* kept winning override */</div>
+              </div>
             </div>
           </div>
-        </div>
       </section>
 
       <!-- 8-Point Safety & Proof Engine -->
       <section id="safety-proof">
         <h2>🔬 The 8-Point Safety &amp; Proof Engine</h2>
-        <p>CSS is order-sensitive and specificity-fragile. CSSForge verifies 8 strict mathematical invariants before applying any mutation:</p>
+        <p>CSS is order-sensitive and specificity-fragile. CSSForge verifies 8 strict mathematical invariants before
+          applying any mutation:</p>
 
         <div class="table-wrapper">
           <table>
+            <caption class="sr-only">Eight invariant proofs CSSForge checks before applying a mutation</caption>
             <thead>
               <tr>
                 <th>Invariant Proof Check</th>
@@ -740,7 +957,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
             <tbody>
               <tr>
                 <td><code>specificity_equivalent</code></td>
-                <td>Guarantees that <code>:is()</code> factoring does not lift branch weights or break later cascade overrides.</td>
+                <td>Guarantees that <code>:is()</code> factoring does not lift branch weights or break later cascade
+                  overrides.</td>
               </tr>
               <tr>
                 <td><code>declarations_preserved</code></td>
@@ -756,7 +974,9 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               </tr>
               <tr>
                 <td><code>at_rule_equivalent</code></td>
-                <td>Ensures query expressions in <code>@media</code>, <code>@supports</code>, and <code>@container</code> are unchanged.</td>
+                <td>Ensures query expressions in <code>@media</code>, <code>@supports</code>, and
+                  <code>@container</code> are unchanged.
+                </td>
               </tr>
               <tr>
                 <td><code>layer_precedence_equivalent</code></td>
@@ -764,11 +984,13 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               </tr>
               <tr>
                 <td><code>scope_boundary_equivalent</code></td>
-                <td>Prevents invalid automatic conversion into <code>@scope</code> without explicit design boundaries.</td>
+                <td>Prevents invalid automatic conversion into <code>@scope</code> without explicit design boundaries.
+                </td>
               </tr>
               <tr>
                 <td><code>syntax_lossless</code></td>
-                <td>Splices replacements strictly into target byte spans. Untouched lines remain 100% byte-for-byte identical.</td>
+                <td>Splices replacements strictly into target byte spans. Untouched lines remain 100% byte-for-byte
+                  identical.</td>
               </tr>
             </tbody>
           </table>
@@ -782,6 +1004,7 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
 
         <div class="table-wrapper">
           <table>
+            <caption class="sr-only">Ecosystem gap: lowering tools versus CSSForge modernization</caption>
             <thead>
               <tr>
                 <th>Direction</th>
@@ -795,13 +1018,16 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
                 <td><strong>Nested ➔ Flat Lowering</strong></td>
                 <td><span class="badge badge-safe">Mature</span></td>
                 <td>Lightning CSS, PostCSS Nesting, esbuild, LibSass</td>
-                <td>Deterministic, mechanical compiler lowering. Desugaring <code>&</code> into flat rules or <code>:is()</code> is grammatically straightforward.</td>
+                <td>Deterministic, mechanical compiler lowering. Desugaring <code>&</code> into flat rules or
+                  <code>:is()</code> is grammatically straightforward.
+                </td>
               </tr>
               <tr>
                 <td><strong>Flat ➔ Modern Nested</strong></td>
                 <td><span class="badge badge-refactor">Fragmented</span></td>
                 <td>NestYourCSS, stylelint-use-nesting, css-nesting-converter</td>
-                <td>Cascade-sensitive refactoring problem. Existing tools either produce invalid CSS, break specificity, destroy code formatting, or only fold basic <code>:hover</code> states.</td>
+                <td>Cascade-sensitive refactoring problem. Existing tools either produce invalid CSS, break specificity,
+                  destroy code formatting, or only fold basic <code>:hover</code> states.</td>
               </tr>
             </tbody>
           </table>
@@ -812,37 +1038,51 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
           <div class="benefit-card">
             <div class="benefit-icon">🛡️</div>
             <div class="benefit-title">Dual-Layer Zero-Regression Engine</div>
-            <div class="benefit-desc">LightningCSS AST parser is used purely for grammatical validation. All file mutations are performed by a surgical Byte Patch Engine that replaces strictly target byte spans. Untouched lines, developer comments, custom indentation, and quote styles remain 100% byte-for-byte identical.</div>
+            <div class="benefit-desc">LightningCSS AST parser is used purely for grammatical validation. All file
+              mutations are performed by a surgical Byte Patch Engine that replaces strictly target byte spans.
+              Untouched lines, developer comments, custom indentation, and quote styles remain 100% byte-for-byte
+              identical.</div>
           </div>
 
           <div class="benefit-card">
             <div class="benefit-icon">🔬</div>
             <div class="benefit-title">Mathematical Specificity Proofs</div>
-            <div class="benefit-desc">Calculates exact specificity vectors <code>(a, b, c)</code> for every input and modernized selector branch. Zero specificity drift guarantee ensures elements match with identical priority across browsers.</div>
+            <div class="benefit-desc">Calculates exact specificity vectors <code>(a, b, c)</code> for every input and
+              modernized selector branch. Zero specificity drift guarantee ensures elements match with identical
+              priority across browsers.</div>
           </div>
 
           <div class="benefit-card">
             <div class="benefit-icon">🚫</div>
             <div class="benefit-title">Refusal as a Core Safety Feature</div>
-            <div class="benefit-desc">When an AST transform would violate native CSS semantics (such as <code>:is()</code> lifting specificity on lower branches or invalid BEM string concatenation), CSSForge explicitly refuses the transformation instead of generating broken stylesheets.</div>
+            <div class="benefit-desc">When an AST transform would violate native CSS semantics (such as
+              <code>:is()</code> lifting specificity on lower branches or invalid BEM string concatenation), CSSForge
+              explicitly refuses the transformation instead of generating broken stylesheets.
+            </div>
           </div>
 
           <div class="benefit-card">
             <div class="benefit-icon">✨</div>
             <div class="benefit-title">Multi-Selector Cluster Factoring</div>
-            <div class="benefit-desc">The first and only tool capable of gathering multi-branch rules sharing identical bases (e.g. <code>.card .title, #hero .title</code> + <code>.card, #hero</code>) into unified, clean <code>:is()</code> blocks with nested children.</div>
+            <div class="benefit-desc">The first and only tool capable of gathering multi-branch rules sharing identical
+              bases (e.g. <code>.card .title, #hero .title</code> + <code>.card, #hero</code>) into unified, clean
+              <code>:is()</code> blocks with nested children.
+            </div>
           </div>
 
           <div class="benefit-card">
             <div class="benefit-icon">🖥️</div>
             <div class="benefit-title">Zero-Config Terminal TUI Workbench</div>
-            <div class="benefit-desc">A full-screen, responsive keyboard-driven interactive workbench powered by Ratatui &amp; Crossterm with live unified diff viewing (<code>[d]</code>), preset cycling (<code>[p]</code>), and 4-step guided refactoring.</div>
+            <div class="benefit-desc">A full-screen, responsive keyboard-driven interactive workbench powered by Ratatui
+              &amp; Crossterm with live unified diff viewing (<code>[d]</code>), preset cycling (<code>[p]</code>), and
+              4-step guided refactoring.</div>
           </div>
 
           <div class="benefit-card">
             <div class="benefit-icon">🔒</div>
             <div class="benefit-title">Dirty Git Working Tree Guard</div>
-            <div class="benefit-desc">Detects uncommitted Git modifications before writing and automatically blocks destructive in-place replacements unless explicitly confirmed by the user.</div>
+            <div class="benefit-desc">Detects uncommitted Git modifications before writing and automatically blocks
+              destructive in-place replacements unless explicitly confirmed by the user.</div>
           </div>
         </div>
       </section>
@@ -850,7 +1090,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
       <!-- Strict Non-Goals -->
       <section id="non-goals">
         <h2>🚫 Strict Non-Goals: What We Do NOT &amp; Will NOT Do</h2>
-        <p>To preserve 100% cascade safety and developer trust, CSSForge enforces clear architectural boundaries and will never attempt unsound heuristics:</p>
+        <p>To preserve 100% cascade safety and developer trust, CSSForge enforces clear architectural boundaries and
+          will never attempt unsound heuristics:</p>
 
         <div class="non-goals-grid">
           <div class="non-goal-card">
@@ -858,7 +1099,9 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="non-goal-badge">❌ Anti-Goal</span>
               <h4>No BEM String Concatenation (<code>&amp;__element</code>)</h4>
             </div>
-            <p>In native CSS, <code>&</code> is a selector token (desugars to <code>:is()</code>), <strong>NOT a Sass string concatenator</strong>. Writing <code>.card { &__title { } }</code> is invalid in native CSS. CSSForge strictly refuses BEM token concatenation.</p>
+            <p>In native CSS, <code>&</code> is a selector token (desugars to <code>:is()</code>), <strong>NOT a Sass
+                string concatenator</strong>. Writing <code>.card { &__title { } }</code> is invalid in native CSS.
+              CSSForge strictly refuses BEM token concatenation.</p>
           </div>
 
           <div class="non-goal-card">
@@ -866,7 +1109,10 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="non-goal-badge">❌ Anti-Goal</span>
               <h4>No Specificity Inflation / Lifting</h4>
             </div>
-            <p><code>:is(A, B)</code> takes the maximum specificity of all branches. If wrapping rules into <code>:is()</code> would artificially lift the specificity of a lower-specificity branch and alter cascade matching priority, CSSForge refuses the refactor.</p>
+            <p><code>:is(A, B)</code> takes the maximum specificity of all branches. If wrapping rules into
+              <code>:is()</code> would artificially lift the specificity of a lower-specificity branch and alter cascade
+              matching priority, CSSForge refuses the refactor.
+            </p>
           </div>
 
           <div class="non-goal-card">
@@ -874,7 +1120,9 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="non-goal-badge">❌ Anti-Goal</span>
               <h4>No Destructive Minification or Re-Serialization</h4>
             </div>
-            <p>CSSForge is a <strong>semantic modernizer, not a destructive minifier</strong>. We will never re-format untouched code, strip developer comments, convert colors, or drop intentional browser fallback duplicate declarations.</p>
+            <p>CSSForge is a <strong>semantic modernizer, not a destructive minifier</strong>. We will never re-format
+              untouched code, strip developer comments, convert colors, or drop intentional browser fallback duplicate
+              declarations.</p>
           </div>
 
           <div class="non-goal-card">
@@ -882,7 +1130,10 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="non-goal-badge">❌ Anti-Goal</span>
               <h4>No Pseudo-Element Nesting Traps</h4>
             </div>
-            <p>Native CSS <code>&</code> cannot legally nest under parent selectors containing pseudo-elements (e.g. <code>::before</code>, <code>::after</code>, <code>::marker</code>). CSSForge strictly identifies and prevents invalid pseudo-element nesting.</p>
+            <p>Native CSS <code>&</code> cannot legally nest under parent selectors containing pseudo-elements (e.g.
+              <code>::before</code>, <code>::after</code>, <code>::marker</code>). CSSForge strictly identifies and
+              prevents invalid pseudo-element nesting.
+            </p>
           </div>
 
           <div class="non-goal-card">
@@ -890,7 +1141,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="non-goal-badge">❌ Anti-Goal</span>
               <h4>No Arbitrary At-Rule Moving Across Barriers</h4>
             </div>
-            <p>We will never hoist or pack <code>@media</code> / <code>@supports</code> blocks across intervening selector barriers if moving them would invert the source-order cascade for overlapping properties.</p>
+            <p>We will never hoist or pack <code>@media</code> / <code>@supports</code> blocks across intervening
+              selector barriers if moving them would invert the source-order cascade for overlapping properties.</p>
           </div>
 
           <div class="non-goal-card">
@@ -898,7 +1150,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
               <span class="non-goal-badge">❌ Anti-Goal</span>
               <h4>No Runtime Heuristic Guesswork</h4>
             </div>
-            <p>We do not guess at runtime JavaScript class additions or dynamically toggled DOM hierarchies. All refactoring operations are statically verifiable and mathematically provable.</p>
+            <p>We do not guess at runtime JavaScript class additions or dynamically toggled DOM hierarchies. All
+              refactoring operations are statically verifiable and mathematically provable.</p>
           </div>
         </div>
       </section>
@@ -910,6 +1163,8 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
 
         <div class="table-wrapper">
           <table>
+            <caption class="sr-only">Comparison of CSSForge with Lightning CSS, NestYourCSS, stylelint, and related
+              tools</caption>
             <thead>
               <tr>
                 <th>Tool / Project</th>
@@ -924,43 +1179,55 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
                 <td><strong>Lightning CSS</strong><br><em>(Parcel / Rust)</em></td>
                 <td>Nested ➔ Flat &amp; Lowering</td>
                 <td>Blazing fast (2.7M lines/s), browser-target aware.</td>
-                <td>Not an aesthetic refactorer. Does not modernize flat CSS to nested CSS; reserializes entire AST.</td>
-                <td><span class="badge badge-safe">Lossless Modernizer</span> Dual-layer patch engine preserving untouched lines &amp; comments.</td>
+                <td>Not an aesthetic refactorer. Does not modernize flat CSS to nested CSS; reserializes entire AST.
+                </td>
+                <td><span class="badge badge-safe">Lossless Modernizer</span> Dual-layer patch engine preserving
+                  untouched lines &amp; comments.</td>
               </tr>
               <tr>
                 <td><strong>NestYourCSS</strong><br><em>(@nycss)</em></td>
                 <td>Flat ⇄ Nested</td>
                 <td>Balanced/Max depth strategies, Web GUI + CLI.</td>
-                <td>Uses character lexer without semantic proof engine; cannot prove non-adjacent safety or at-rule safety.</td>
-                <td><span class="badge badge-safe">Mathematical Proofs</span> Full 8-point invariant proof engine with zero specificity drift.</td>
+                <td>Uses character lexer without semantic proof engine; cannot prove non-adjacent safety or at-rule
+                  safety.</td>
+                <td><span class="badge badge-safe">Mathematical Proofs</span> Full 8-point invariant proof engine with
+                  zero specificity drift.</td>
               </tr>
               <tr>
                 <td><strong>stylelint-use-nesting</strong><br><em>(CSSTools)</em></td>
                 <td>Flat ➔ Nested Linter</td>
                 <td>Safe, incremental autofix.</td>
-                <td>Narrow scope: only folds immediate adjacent pseudo-classes (<code>:hover</code>). No <code>:is()</code> factoring or at-rule restructuring.</td>
-                <td><span class="badge badge-safe">27 Rules Catalog</span> Handles complex combinators, multi-branch clustering, at-rule merging, and layer-safe selector gathering.</td>
+                <td>Narrow scope: only folds immediate adjacent pseudo-classes (<code>:hover</code>). No
+                  <code>:is()</code> factoring or at-rule restructuring.
+                </td>
+                <td><span class="badge badge-safe">27 Rules Catalog</span> Handles complex combinators, multi-branch
+                  clustering, at-rule merging, and layer-safe selector gathering.</td>
               </tr>
               <tr>
                 <td><strong>css-nesting-converter</strong></td>
                 <td>Flat ⇄ Nested CLI</td>
                 <td>PostCSS plugin, layer wrapping.</td>
                 <td>Strips SCSS variables blindly; lacks specificity verification and cluster factoring.</td>
-                <td><span class="badge badge-safe">Safe Clustering</span> Preserves all variables, prefixes, and declarations with zero loss.</td>
+                <td><span class="badge badge-safe">Safe Clustering</span> Preserves all variables, prefixes, and
+                  declarations with zero loss.</td>
               </tr>
               <tr>
                 <td><strong>postcss-nested</strong><br><em>(Evil Martians)</em></td>
                 <td>Nested ➔ Flat (Sass-like)</td>
                 <td>14M+ weekly downloads, popular in build setups.</td>
-                <td>Violates native CSS semantics. Employs Sass-style string concatenation rather than <code>:is()</code> tokens.</td>
-                <td><span class="badge badge-safe">Native W3C Standard</span> Strictly emits spec-compliant native CSS nesting and modern selectors.</td>
+                <td>Violates native CSS semantics. Employs Sass-style string concatenation rather than
+                  <code>:is()</code> tokens.
+                </td>
+                <td><span class="badge badge-safe">Native W3C Standard</span> Strictly emits spec-compliant native CSS
+                  nesting and modern selectors.</td>
               </tr>
               <tr>
                 <td><strong>cssnano</strong></td>
                 <td>Minification</td>
                 <td>Merges adjacent rules, discards dead code.</td>
                 <td>Destructive by default: drops comments, strips intentional duplicate fallback declarations.</td>
-                <td><span class="badge badge-safe">Lossless Refactoring</span> Retains duplicate declarations, custom properties, and fallback fall-throughs.</td>
+                <td><span class="badge badge-safe">Lossless Refactoring</span> Retains duplicate declarations, custom
+                  properties, and fallback fall-throughs.</td>
               </tr>
             </tbody>
           </table>
@@ -970,10 +1237,12 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
       <!-- 7 Output Modes -->
       <section id="output-modes">
         <h2>💾 7 Output Modes</h2>
-        <p>CSSForge provides flexible output strategies for testing, safe local refactoring, and automated CI pipelines:</p>
+        <p>CSSForge provides flexible output strategies for testing, safe local refactoring, and automated CI pipelines:
+        </p>
 
         <div class="table-wrapper">
           <table>
+            <caption class="sr-only">CSSForge CLI output modes and when to use each</caption>
             <thead>
               <tr>
                 <th>Mode Flag</th>
@@ -1029,6 +1298,7 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
 
         <div class="table-wrapper">
           <table>
+            <caption class="sr-only">Published CSSForge workspace crates and their roles</caption>
             <thead>
               <tr>
                 <th>Crate Name</th>
@@ -1040,20 +1310,23 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
             <tbody>
               <tr>
                 <td><strong><code>cssforge</code></strong></td>
-                <td><a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener">v0.4.0</a></td>
-                <td><a href="https://docs.rs/cssforge" target="_blank" rel="noopener">Docs.rs</a></td>
+                <td><a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener noreferrer">v0.4.0</a>
+                </td>
+                <td><a href="https://docs.rs/cssforge" target="_blank" rel="noopener noreferrer">Docs.rs</a></td>
                 <td>Standalone multi-platform CLI and TUI workbench executable.</td>
               </tr>
               <tr>
                 <td><strong><code>cssforge-core</code></strong></td>
-                <td><a href="https://crates.io/crates/cssforge-core" target="_blank" rel="noopener">v0.4.0</a></td>
-                <td><a href="https://docs.rs/cssforge-core" target="_blank" rel="noopener">Docs.rs</a></td>
+                <td><a href="https://crates.io/crates/cssforge-core" target="_blank"
+                    rel="noopener noreferrer">v0.4.0</a></td>
+                <td><a href="https://docs.rs/cssforge-core" target="_blank" rel="noopener noreferrer">Docs.rs</a></td>
                 <td>Pure Rust AST parser, specificity engine, and 27 transformation rules library.</td>
               </tr>
               <tr>
                 <td><strong><code>cssforge-tui</code></strong></td>
-                <td><a href="https://crates.io/crates/cssforge-tui" target="_blank" rel="noopener">v0.4.0</a></td>
-                <td><a href="https://docs.rs/cssforge-tui" target="_blank" rel="noopener">Docs.rs</a></td>
+                <td><a href="https://crates.io/crates/cssforge-tui" target="_blank" rel="noopener noreferrer">v0.4.0</a>
+                </td>
+                <td><a href="https://docs.rs/cssforge-tui" target="_blank" rel="noopener noreferrer">Docs.rs</a></td>
                 <td>Ratatui-powered terminal user interface component and visual diff viewer.</td>
               </tr>
             </tbody>
@@ -1064,21 +1337,23 @@ cssforge apply ./src/app.css --output overwrite-with-backup --yes</code></pre>
       <!-- Site Footer -->
       <footer class="site-footer">
         <div>
-          CSSForge is built with ❤️ by <a href="https://github.com/jayeshmepani" target="_blank" rel="noopener">Jayesh Mepani</a> under the <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener">MIT License</a>.
+          CSSForge is built with ❤️ by <a href="https://github.com/jayeshmepani" target="_blank"
+            rel="noopener noreferrer">Jayesh
+            Mepani</a> under the <a href="https://opensource.org/licenses/MIT" target="_blank"
+            rel="noopener noreferrer">MIT
+            License</a>.
         </div>
         <div>
-          <a href="https://github.com/jayeshmepani/cssforge" target="_blank" rel="noopener">GitHub</a> •
-          <a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener">crates.io</a> •
-          <a href="https://docs.rs/cssforge-core" target="_blank" rel="noopener">Docs.rs</a>
+          <a href="https://github.com/jayeshmepani/cssforge" target="_blank" rel="noopener noreferrer">GitHub</a> •
+          <a href="https://crates.io/crates/cssforge" target="_blank" rel="noopener noreferrer">crates.io</a> •
+          <a href="https://docs.rs/cssforge-core" target="_blank" rel="noopener noreferrer">Docs.rs</a>
         </div>
       </footer>
     </main>
   </div>
 
   <!-- Toast Notification Container -->
-  <div class="toast-container" id="toast-container"></div>
-
-  <!-- JavaScript -->
-  <script src="script.js"></script>
+  <div class="toast-container" id="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 </body>
+
 </html>

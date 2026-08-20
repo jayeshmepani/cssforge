@@ -9,8 +9,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function applyTheme(theme, persist) {
     root.setAttribute('data-theme', theme);
     root.style.colorScheme = theme;
+    if (themeBtn) {
+      themeBtn.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+      themeBtn.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+    }
     if (persist) {
-      try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+      try { localStorage.setItem(THEME_KEY, theme); } catch (e) { }
     }
   }
 
@@ -63,6 +67,8 @@ document.addEventListener('DOMContentLoaded', () => {
       trigger.className = 'custom-select-trigger';
       trigger.setAttribute('aria-haspopup', 'listbox');
       trigger.setAttribute('aria-expanded', 'false');
+      const selectName = select.getAttribute('aria-label');
+      if (selectName) trigger.setAttribute('aria-label', selectName);
 
       const label = document.createElement('span');
       label.className = 'trigger-label';
@@ -242,8 +248,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── 3. Copy Code Snippets ──
   document.querySelectorAll('pre').forEach(pre => {
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'copy-code-btn';
     btn.textContent = 'Copy';
+    btn.setAttribute('aria-label', 'Copy code snippet');
     pre.appendChild(btn);
 
     btn.addEventListener('click', async () => {
@@ -268,7 +276,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!sidebar || !backdrop) return;
     sidebar.classList.toggle('is-open', open);
     backdrop.classList.toggle('is-active', open);
+    backdrop.hidden = !open;
+    if (menuBtn) {
+      menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
   }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sidebar && sidebar.classList.contains('is-open')) {
+      toggleDrawer(false);
+      if (menuBtn) menuBtn.focus();
+    }
+  });
 
   if (menuBtn) {
     menuBtn.addEventListener('click', () => toggleDrawer(!sidebar.classList.contains('is-open')));
@@ -365,7 +384,9 @@ document.addEventListener('DOMContentLoaded', () => {
     ruleCategorySelect.addEventListener('change', (e) => {
       activeCategory = e.target.value;
       categoryPills.forEach(p => {
-        p.classList.toggle('active', p.dataset.category === activeCategory);
+        const on = p.dataset.category === activeCategory;
+        p.classList.toggle('active', on);
+        p.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
       filterRules();
     });
@@ -373,8 +394,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   categoryPills.forEach(pill => {
     pill.addEventListener('click', () => {
-      categoryPills.forEach(p => p.classList.remove('active'));
+      categoryPills.forEach(p => {
+        p.classList.remove('active');
+        p.setAttribute('aria-pressed', 'false');
+      });
       pill.classList.add('active');
+      pill.setAttribute('aria-pressed', 'true');
       activeCategory = pill.dataset.category;
       if (ruleCategorySelect) {
         ruleCategorySelect.value = activeCategory;
@@ -387,13 +412,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const navSearch = document.getElementById('nav-search-input');
   const navLinks = document.querySelectorAll('.nav-list a');
 
+  const navEmpty = document.getElementById('nav-empty');
   if (navSearch) {
     navSearch.addEventListener('input', (e) => {
       const q = e.target.value.toLowerCase().trim();
+      let visible = 0;
       navLinks.forEach(link => {
         const text = link.textContent.toLowerCase();
-        link.parentElement.style.display = text.includes(q) ? 'block' : 'none';
+        const show = !q || text.includes(q);
+        link.parentElement.style.display = show ? '' : 'none';
+        if (show) visible += 1;
       });
+      if (navEmpty) {
+        navEmpty.hidden = visible !== 0;
+        navEmpty.classList.toggle('sr-only', visible !== 0);
+      }
+    });
+    navSearch.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        navSearch.value = '';
+        navSearch.dispatchEvent(new Event('input'));
+      }
     });
   }
 
@@ -409,10 +448,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     navLinks.forEach(link => {
-      if (link.getAttribute('href') === `#${currentId}`) {
-        link.classList.add('active');
+      const isCurrent = link.getAttribute('href') === `#${currentId}`;
+      link.classList.toggle('active', isCurrent);
+      if (isCurrent) {
+        link.setAttribute('aria-current', 'page');
       } else {
-        link.classList.remove('active');
+        link.removeAttribute('aria-current');
       }
     });
   });
