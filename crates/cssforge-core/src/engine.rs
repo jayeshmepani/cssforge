@@ -5,7 +5,7 @@ use crate::{
     },
     scanner::{
         NodeKind, SourceNode, count_ascii_case_insensitive_outside_comments,
-        count_top_level_declarations, is_whitespace_only, scan_nodes,
+        count_top_level_declarations, is_whitespace_only, scan_nodes, top_level_declarations,
     },
 };
 use anyhow::{Context, Result};
@@ -223,7 +223,94 @@ impl ClusterChild {
 pub fn analyze_file(path: &Path, enabled_rules: &[RuleId]) -> Result<FileReport> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("failed to read CSS file {}", path.display()))?;
-    analyze_source(path.to_path_buf(), &source, enabled_rules)
+    analyze_content(path.to_path_buf(), &source, enabled_rules)
+}
+
+/// Return the content ranges of HTML/template `<style>` elements. The tag
+/// itself is intentionally excluded so transformations can be spliced back
+/// without changing Blade/PHP/HTML markup.
+pub fn extract_style_blocks(source: &str) -> Vec<Range<usize>> {
+    let lower = source.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut blocks = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(relative) = lower[cursor..].find("<style") {
+        let open = cursor + relative;
+        let after_name = open + "<style".len();
+        if bytes
+            .get(after_name)
+            .is_none_or(|b| !b.is_ascii_whitespace() && *b != b'>')
+        {
+            cursor = after_name;
+            continue;
+        }
+        let Some(open_end_rel) = lower[after_name..].find('>') else {
+            break;
+        };
+        let content_start = after_name + open_end_rel + 1;
+        let Some(close_rel) = lower[content_start..].find("</style") else {
+            break;
+        };
+        let close_start = content_start + close_rel;
+        let Some(close_end_rel) = lower[close_start..].find('>') else {
+            break;
+        };
+        blocks.push(content_start..close_start);
+        cursor = close_start + close_end_rel + 1;
+    }
+    blocks
+}
+
+fn analyze_content(path: PathBuf, source: &str, enabled_rules: &[RuleId]) -> Result<FileReport> {
+    let blocks = extract_style_blocks(source);
+    if blocks.is_empty() {
+        return analyze_source(path, source, enabled_rules);
+    }
+
+    let mut report = FileReport {
+        path,
+        parse_ok: true,
+        parse_error: None,
+        stats: AnalysisStats::default(),
+        findings: Vec::new(),
+        plans: Vec::new(),
+    };
+    report.stats.bytes = source.len();
+
+    for (index, range) in blocks.iter().enumerate() {
+        let mut embedded =
+            analyze_source(report.path.clone(), &source[range.clone()], enabled_rules)?;
+        if !embedded.parse_ok {
+            report.parse_ok = false;
+            if report.parse_error.is_none() {
+                report.parse_error = embedded
+                    .parse_error
+                    .take()
+                    .map(|error| format!("style block {}: {error}", index + 1));
+            }
+        }
+        report.stats.top_level_style_rules += embedded.stats.top_level_style_rules;
+        report.stats.top_level_at_rules += embedded.stats.top_level_at_rules;
+        report.stats.declarations += embedded.stats.declarations;
+        report.stats.important_declarations += embedded.stats.important_declarations;
+        report.stats.custom_properties += embedded.stats.custom_properties;
+        report.stats.duplicate_selectors += embedded.stats.duplicate_selectors;
+        report.stats.media_rules += embedded.stats.media_rules;
+        report.stats.supports_rules += embedded.stats.supports_rules;
+        report.stats.container_rules += embedded.stats.container_rules;
+        report.stats.layer_rules += embedded.stats.layer_rules;
+        report.stats.scope_rules += embedded.stats.scope_rules;
+        report.stats.starting_style_rules += embedded.stats.starting_style_rules;
+        report.stats.parse_errors += embedded.stats.parse_errors;
+        report.findings.append(&mut embedded.findings);
+        for mut plan in embedded.plans {
+            plan.source_range.start += range.start;
+            plan.source_range.end += range.start;
+            plan.original = source[plan.source_range.start..plan.source_range.end].to_string();
+            report.plans.push(plan);
+        }
+    }
+    Ok(report)
 }
 
 pub fn analyze_workspace(
@@ -460,25 +547,19 @@ fn collect_findings(source: &str, nodes: &[SourceNode]) -> Vec<Finding> {
                     }
 
                     let mut seen_props: HashMap<String, String> = HashMap::new();
-                    for line in body.lines() {
-                        let trimmed = line.trim();
-                        if trimmed.starts_with("/*") || trimmed.starts_with('*') || !trimmed.contains(':') {
-                            continue;
-                        }
-                        if let Some((prop, val)) = trimmed.split_once(':') {
-                            let prop = prop.trim().to_ascii_lowercase();
-                            let val = val.trim().trim_end_matches(';').trim().to_string();
-                            if let Some(prev_val) = seen_props.get(&prop) {
-                                if prev_val == &val {
-                                    findings.push(Finding {
-                                        safety: Safety::Review,
-                                        title: "Exact duplicate declaration detected".into(),
-                                        detail: format!("In {selector}: property '{prop}: {val}' is declared multiple times with identical value."),
-                                    });
-                                }
-                            } else {
-                                seen_props.insert(prop, val);
+                    for (raw_prop, raw_val) in top_level_declarations(body) {
+                        let prop = raw_prop.to_ascii_lowercase();
+                        let val = raw_val.trim_end_matches(';').trim().to_string();
+                        if let Some(prev_val) = seen_props.get(&prop) {
+                            if prev_val == &val {
+                                findings.push(Finding {
+                                    safety: Safety::Review,
+                                    title: "Exact duplicate declaration detected".into(),
+                                    detail: format!("In {selector}: property '{prop}: {val}' is declared multiple times with identical value."),
+                                });
                             }
+                        } else {
+                            seen_props.insert(prop, val);
                         }
                     }
 
@@ -547,7 +628,17 @@ fn bem_base_candidate(selector: &str) -> Option<&str> {
     None
 }
 
-const TRANSPARENT_AT_RULES: &[&str] = &["layer", "scope", "media", "supports", "container"];
+// These at-rules keep the nearest style-rule nesting context while their
+// contents are parsed.  `@starting-style` is a conditional group rule too;
+// omitting it here means nested selectors inside it are never planned.
+const TRANSPARENT_AT_RULES: &[&str] = &[
+    "layer",
+    "scope",
+    "media",
+    "supports",
+    "container",
+    "starting-style",
+];
 
 fn build_plans_recursive(
     path: &Path,
@@ -558,9 +649,15 @@ fn build_plans_recursive(
     let mut plans = build_plans(path, source, nodes, enabled_rules);
 
     for node in nodes {
-        if let NodeKind::AtBlock { name, .. } = &node.kind
-            && TRANSPARENT_AT_RULES.contains(&name.as_str())
-        {
+        let should_recurse = match &node.kind {
+            NodeKind::AtBlock { name, .. } => TRANSPARENT_AT_RULES.contains(&name.as_str()),
+            // Native CSS nesting puts child style rules inside a style rule's
+            // body. They need the same planning pass as top-level rules.
+            NodeKind::Style => true,
+            NodeKind::AtStatement { .. } => false,
+        };
+
+        if should_recurse {
             let is_covered = plans
                 .iter()
                 .any(|p| p.source_range.start <= node.start && node.end <= p.source_range.end);
@@ -642,8 +739,12 @@ fn build_plans(
         if contains_top_level_comma(parent_selector) {
             let parent_indent = line_indent(source, parent.start);
             let unit = relative_indent_unit(source, parent);
+            let already_nested_selector_list = split_top_level_comma(parent_selector)
+                .iter()
+                .any(|branch| branch.trim().starts_with('&'));
 
             if enabled.contains(&RuleId::FactorSelectorList)
+                && !already_nested_selector_list
                 && let Some(body_range) = &parent.body_range
             {
                 let body = &source[body_range.clone()];
@@ -1375,20 +1476,28 @@ fn extract_base_target(selector: &str) -> Option<&str> {
         && pos > 0
         && !selector[pos..].starts_with("::")
     {
-        let base = &selector[..pos];
-        if !base.is_empty() {
+        let base = selector[..pos].trim_end();
+        if is_simple_nesting_base(base) {
             return Some(base);
         }
     }
     if let Some(pos) = selector.find('[')
         && pos > 0
     {
-        let base = &selector[..pos];
-        if !base.is_empty() {
+        let base = selector[..pos].trim_end();
+        if is_simple_nesting_base(base) {
             return Some(base);
         }
     }
     None
+}
+
+fn is_simple_nesting_base(base: &str) -> bool {
+    let first = base.chars().next();
+    !base.is_empty()
+        && !first.is_some_and(|c| matches!(c, '&' | ':' | '>' | '+' | '~'))
+        && !base.chars().any(|c| c.is_whitespace())
+        && !base.chars().any(|c| matches!(c, '>' | '+' | '~'))
 }
 
 fn parse_rule_body_items(body_str: &str) -> (Vec<String>, Vec<String>) {
@@ -1600,6 +1709,25 @@ enum RelatedKind {
     Appended,
 }
 
+/// Render a combinator as one complete native CSS nested selector.
+///
+/// A combinator may be used directly in a nested selector (`> .child`), but
+/// it must not become a rule on its own (`> { ... }`). Keeping `&` attached
+/// here makes every construction path obey that invariant.
+fn explicit_relative_combinator(combinator: char, selector: &str) -> String {
+    format!("& {combinator} {}", selector.trim())
+}
+
+fn starts_with_explicit_combinator(selector: &str) -> bool {
+    let Some(rest) = selector.trim().strip_prefix('&') else {
+        return false;
+    };
+    rest.trim_start()
+        .chars()
+        .next()
+        .is_some_and(|c| matches!(c, '>' | '+' | '~'))
+}
+
 fn prefix_related_nested_selector(base: &str, candidate_sel: &str) -> Option<String> {
     if candidate_sel == base || !candidate_sel.starts_with(base) {
         return None;
@@ -1621,9 +1749,9 @@ fn prefix_related_nested_selector(base: &str, candidate_sel: &str) -> Option<Str
         }
     }
     if rem.starts_with('+') || rem.starts_with('>') || rem.starts_with('~') {
-        let first_char = &rem[..1];
+        let first_char = rem.chars().next()?;
         let rest = rem[1..].trim_start();
-        return Some(format!("{first_char} {rest}"));
+        return Some(explicit_relative_combinator(first_char, rest));
     }
     if rem_raw.starts_with(' ') {
         return Some(rem.to_string());
@@ -1915,6 +2043,9 @@ fn is_absorbable_descendant(base: &str, sel: &str) -> bool {
 }
 
 fn can_nest_under_gather_home(base: &str, sel: &str) -> bool {
+    if selector_contains_nesting_amp(sel) {
+        return false;
+    }
     sel == base
         || extract_related_nested_selector(base, sel).is_some()
         || is_absorbable_descendant(base, sel)
@@ -2287,7 +2418,7 @@ fn split_relative_combinator(sel: &str) -> Option<(String, String)> {
                     if left.is_empty() || right.is_empty() {
                         return None;
                     }
-                    return Some((left.to_string(), format!("{c} {right}")));
+                    return Some((left.to_string(), explicit_relative_combinator(c, right)));
                 }
             }
             _ => {}
@@ -2302,7 +2433,14 @@ fn is_at_rule_prelude(sel: &str) -> bool {
 
 fn synthesizable_parent(sel: &str) -> Option<(String, String)> {
     let sel = sel.trim();
-    if sel.is_empty() || sel == "&" || is_at_rule_prelude(sel) {
+    // A selector containing `&` is already expressed in native nesting
+    // context. Treating its leading `&` as a synthetic parent would split a
+    // valid `& > .child` into the invalid `& { > .child { ... } }` shape.
+    if sel.is_empty()
+        || sel == "&"
+        || starts_with_explicit_combinator(sel)
+        || is_at_rule_prelude(sel)
+    {
         return None;
     }
     if contains_top_level_comma(sel) {
@@ -3086,6 +3224,18 @@ fn should_group_at_block(
     if style_inners.len() < 3 {
         return false;
     }
+    // `@starting-style` has temporal semantics in addition to selector
+    // semantics. Do not gather a nested selector into a shorter selector
+    // home, because that can change the subject receiving the transition
+    // starting state.
+    if name == "starting-style"
+        && style_inners.iter().any(|inner| {
+            let sel = inner.prelude(source).trim();
+            assign_gather_home(sel, exact_homes, home_weight).is_some_and(|home| home != sel)
+        })
+    {
+        return false;
+    }
     let mut assigned: HashMap<&str, usize> = HashMap::new();
     let mut unsafe_extract = false;
     for inner in style_inners {
@@ -3210,6 +3360,18 @@ fn collect_gather_cluster(
             if !GATHERABLE_CONDITIONALS.contains(&name.as_str()) {
                 continue;
             }
+            // A conditional block containing another at-rule is a structured
+            // subtree. Extracting only its direct style children would make
+            // the replacement span delete nested conditionals (for example
+            // `@supports { details { ... } @starting-style { ... } }`).
+            // Leave mixed conditional contents grouped for a later, dedicated
+            // rule rather than risking data loss.
+            if inner_nodes
+                .iter()
+                .any(|inner| !matches!(&inner.kind, NodeKind::Style))
+            {
+                continue;
+            }
             let style_inners: Vec<&SourceNode> = inner_nodes
                 .iter()
                 .filter(|n| matches!(n.kind, NodeKind::Style))
@@ -3217,7 +3379,10 @@ fn collect_gather_cluster(
             let owned = style_inners
                 .iter()
                 .filter(|inner| {
-                    style_belongs_to_home(source, inner, base, exact_homes, home_weight)
+                    let sel = inner.prelude(source).trim();
+                    (name != "starting-style"
+                        && style_belongs_to_home(source, inner, base, exact_homes, home_weight))
+                        || (name == "starting-style" && sel == base)
                 })
                 .count();
             let dominate = !style_inners.is_empty() && owned * 3 >= style_inners.len() * 2;
@@ -3226,8 +3391,18 @@ fn collect_gather_cluster(
                 .filter(|inner| {
                     matches!(&inner.kind, NodeKind::Style) && {
                         let sel = inner.prelude(source).trim();
-                        style_belongs_to_home(source, inner, base, exact_homes, home_weight)
-                            || (dominate && is_absorbable_descendant(base, sel))
+                        ((name != "starting-style"
+                            && style_belongs_to_home(
+                                source,
+                                inner,
+                                base,
+                                exact_homes,
+                                home_weight,
+                            ))
+                            || (name == "starting-style" && sel == base))
+                            || (name != "starting-style"
+                                && dominate
+                                && is_absorbable_descendant(base, sel))
                     }
                 })
                 .cloned()
@@ -3237,8 +3412,16 @@ fn collect_gather_cluster(
                     || (dominate
                         && style_inners.iter().all(|inner| {
                             let sel = inner.prelude(source).trim();
-                            style_belongs_to_home(source, inner, base, exact_homes, home_weight)
-                                || is_absorbable_descendant(base, sel)
+                            ((name != "starting-style"
+                                && style_belongs_to_home(
+                                    source,
+                                    inner,
+                                    base,
+                                    exact_homes,
+                                    home_weight,
+                                ))
+                                || (name == "starting-style" && sel == base))
+                                || (name != "starting-style" && is_absorbable_descendant(base, sel))
                         }));
                 for inner in related {
                     cluster.push(GatherMember::Conditional {
@@ -3716,6 +3899,13 @@ fn plan_gather_related_selector_rules(
         return;
     }
 
+    // This is a review-only advisory pass. Its home-assignment search is
+    // quadratic in the number of distinct selectors, so bound it for large
+    // flat stylesheets and keep the responsive, local transformations active.
+    if nodes.len() > 256 {
+        return;
+    }
+
     let mut exact_homes: Vec<&str> = Vec::new();
     let mut home_weight: HashMap<&str, usize> = HashMap::new();
     collect_gather_homes(source, nodes, &mut exact_homes, &mut home_weight);
@@ -3730,6 +3920,14 @@ fn plan_gather_related_selector_rules(
     );
 
     for base in exact_homes.clone() {
+        // Global selector homes are too broad for structural gathering. They
+        // can span most of a large stylesheet and win overlap resolution over
+        // precise component plans, while also making it easy to move rules
+        // across unrelated cascade contexts. Keep them as ordinary existing
+        // rules; gather only under a concrete selector home.
+        if is_weak_gather_base(base) {
+            continue;
+        }
         let mut cluster: Vec<GatherMember> = Vec::new();
         collect_gather_cluster(
             source,
@@ -4200,15 +4398,22 @@ fn plan_factor_multi_selector_cluster_with_is(
                         id: String::new(),
                         file: path.to_path_buf(),
                         rules: vec![RuleId::ModernizeIs],
-                        safety: Safety::Safe,
+                        safety: if uniform { Safety::Safe } else { Safety::Review },
                         source_range: SourceRange {
                             start: first.start,
                             end: last_node.end,
                         },
                         original: source[first.start..last_node.end].to_string(),
                         proposed: out,
-                        proof: Proof::safe_local(),
-                        warnings: if uniform { Vec::new() } else { vec!["Notice: :is() takes the specificity of its most specific argument.".into()] },
+                        proof: Proof {
+                            specificity_equivalent: uniform,
+                            ..Proof::safe_local()
+                        },
+                        warnings: if uniform {
+                            Vec::new()
+                        } else {
+                            vec!["Mixed selector specificity: :is() takes the specificity of its most specific argument.".into()]
+                        },
                         reason: format!("Factor multi-selector cluster for {} into :is(...) with nested rules.", is_header),
                         selected: true,
                     });
@@ -4298,6 +4503,9 @@ fn plan_merge_identical_rule_bodies(
                     let last = cluster.last().unwrap();
                     let selectors: Vec<&str> =
                         cluster.iter().map(|c| c.prelude(source).trim()).collect();
+                    let specificities: Vec<Specificity> =
+                        selectors.iter().map(|s| calculate_specificity(s)).collect();
+                    let uniform_specificity = specificities.windows(2).all(|w| w[0] == w[1]);
                     let parent_indent = line_indent(source, first.start);
                     let first_body_range = first.body_range.as_ref().unwrap();
                     let unit = detect_indent_unit(source, first_body_range.clone())
@@ -4321,15 +4529,26 @@ fn plan_merge_identical_rule_bodies(
                         id: String::new(),
                         file: path.to_path_buf(),
                         rules: vec![RuleId::MergeIdenticalRuleBodies],
-                        safety: Safety::Safe,
+                        safety: if uniform_specificity {
+                            Safety::Safe
+                        } else {
+                            Safety::Review
+                        },
                         source_range: SourceRange {
                             start: first.start,
                             end: last.end,
                         },
                         original: source[first.start..last.end].to_string(),
                         proposed,
-                        proof: Proof::safe_local(),
-                        warnings: Vec::new(),
+                        proof: Proof {
+                            specificity_equivalent: uniform_specificity,
+                            ..Proof::safe_local()
+                        },
+                        warnings: if uniform_specificity {
+                            Vec::new()
+                        } else {
+                            vec!["Mixed selector specificity: combining these selectors changes cascade weight.".into()]
+                        },
                         reason: format!("Merge {} rules with identical declaration bodies into a single comma-separated rule.", cluster.len()),
                         selected: true,
                     });
@@ -4431,19 +4650,137 @@ pub fn factor_selector_list(
     out.push_str(&nested_indent);
     out.push_str(&inner_selectors.join(&format!(",\n{nested_indent}")));
     out.push_str(" {\n");
-    for line in body.lines() {
-        let trimmed = line.trim();
-        if !trimmed.is_empty() {
-            out.push_str(&inner_decl_indent);
-            out.push_str(&ensure_semicolon(trimmed));
-            out.push('\n');
-        }
+    for line in preserve_body_lines(body) {
+        out.push_str(&inner_decl_indent);
+        out.push_str(&ensure_semicolon(&line));
+        out.push('\n');
     }
     out.push_str(&nested_indent);
     out.push_str("}\n");
     out.push_str(indent);
     out.push('}');
     Some(out)
+}
+
+/// Returns the first functional pseudo-class call that occurs at selector
+/// level, keeping the text before, inside, and after the call separate.
+/// Parentheses and quoted strings inside the argument list are respected.
+fn split_outer_function_call(selector: &str) -> Option<(&str, &'static str, &str, &str)> {
+    let functions = [
+        (":is(", "is"),
+        (":where(", "where"),
+        (":has(", "has"),
+        (":not(", "not"),
+    ];
+    let bytes = selector.as_bytes();
+    let mut depth = 0usize;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'\'' || b == b'"' {
+            quote = Some(b);
+            i += 1;
+            continue;
+        }
+        if b == b'(' {
+            depth += 1;
+            i += 1;
+            continue;
+        }
+        if b == b')' {
+            depth = depth.saturating_sub(1);
+            i += 1;
+            continue;
+        }
+        if depth == 0 {
+            for (needle, name) in functions {
+                if selector[i..].starts_with(needle) {
+                    let open = i + needle.len() - 1;
+                    let close = find_matching_paren(selector, open)?;
+                    return Some((
+                        &selector[..i],
+                        name,
+                        &selector[open + 1..close],
+                        &selector[close + 1..],
+                    ));
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+fn factor_outer_function_arguments(
+    branches: &[&str],
+    uniform_specificity: bool,
+) -> Option<(String, bool)> {
+    let (first_prefix, first_name, first_args, first_suffix) =
+        split_outer_function_call(branches[0])?;
+    // Separate :not() rules are an OR of negations; putting their arguments
+    // into one :not() changes that to an intersection and is not equivalent.
+    if first_name == "not" || first_args.trim().is_empty() {
+        return None;
+    }
+
+    let mut arguments = vec![first_args.trim()];
+    for branch in &branches[1..] {
+        let (prefix, name, args, suffix) = split_outer_function_call(branch)?;
+        if prefix != first_prefix
+            || name != first_name
+            || suffix != first_suffix
+            || args.trim().is_empty()
+        {
+            return None;
+        }
+        arguments.push(args.trim());
+    }
+
+    let combined = format!(
+        "{first_prefix}:{first_name}({}){first_suffix}",
+        arguments.join(", ")
+    );
+    // :where() contributes zero specificity regardless of its arguments.
+    let safe = first_name == "where" || uniform_specificity;
+    Some((combined, safe))
+}
+
+fn contains_pseudo_element_syntax(selector: &str) -> bool {
+    if selector.contains("::") {
+        return true;
+    }
+
+    // CSS2 permits the legacy single-colon spelling only for these
+    // pseudo-elements. They are still pseudo-elements, so putting them in
+    // :is(), :where(), or :not() is invalid even though they use one colon.
+    const LEGACY_PSEUDO_ELEMENTS: &[&str] = &[":before", ":after", ":first-line", ":first-letter"];
+    LEGACY_PSEUDO_ELEMENTS.iter().any(|pseudo| {
+        let mut offset = 0;
+        while let Some(relative) = selector[offset..].find(pseudo) {
+            let start = offset + relative;
+            let end = start + pseudo.len();
+            let boundary = selector[end..].chars().next();
+            if boundary.is_none_or(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_') {
+                return true;
+            }
+            offset = end;
+        }
+        false
+    })
 }
 
 pub fn factor_with_is(selector: &str) -> Option<(String, bool)> {
@@ -4456,13 +4793,28 @@ pub fn factor_with_is(selector: &str) -> Option<(String, bool)> {
         return None;
     }
 
-    if branches.iter().any(|b| b.contains("::")) {
+    if branches.iter().any(|b| contains_pseudo_element_syntax(b)) {
         return None;
     }
 
     let specificities: Vec<Specificity> =
         branches.iter().map(|b| calculate_specificity(b)).collect();
     let uniform_specificity = specificities.windows(2).all(|w| w[0] == w[1]);
+
+    if let Some(result) = factor_outer_function_arguments(&branches, uniform_specificity) {
+        return Some(result);
+    }
+
+    // The remaining factoring patterns operate on top-level selector
+    // boundaries. Do not let them inspect commas or combinators inside a
+    // functional pseudo-class, where they could produce malformed output.
+    if branches.iter().any(|branch| {
+        [":is(", ":where(", ":has(", ":not("]
+            .iter()
+            .any(|function| branch.contains(function))
+    }) {
+        return None;
+    }
 
     let first = branches[0];
 
@@ -4638,6 +4990,7 @@ fn selector_relation(parent: &str, child: &str) -> Option<(RelationKind, String)
         || contains_top_level_comma(child)
         || parent.contains("::")
         || child == parent
+        || selector_contains_nesting_amp(child)
     {
         return None;
     }
@@ -4670,16 +5023,19 @@ fn selector_relation(parent: &str, child: &str) -> Option<(RelationKind, String)
     {
         let after_comb = trimmed[first_char.len_utf8()..].trim();
         if after_comb == parent {
-            (RelationKind::Combinator, format!("{first_char} {parent}"))
+            (
+                RelationKind::Combinator,
+                explicit_relative_combinator(first_char, parent),
+            )
         } else if let Some(after_parent) = after_comb.strip_prefix(parent) {
             (
                 RelationKind::Combinator,
-                format!("{first_char} {parent}{after_parent}"),
+                explicit_relative_combinator(first_char, &format!("{parent}{after_parent}")),
             )
         } else {
             (
                 RelationKind::Combinator,
-                format!("{first_char} {after_comb}"),
+                explicit_relative_combinator(first_char, after_comb),
             )
         }
     } else if remainder
@@ -4736,7 +5092,9 @@ fn conditional_child(
             inners.push(ConditionalInner::Direct {
                 body_range: inner_body,
             });
-        } else if let Some((_rel, nested_sel)) = selector_relation(parent_selector, inner_prelude) {
+        } else if name != "starting-style"
+            && let Some((_rel, nested_sel)) = selector_relation(parent_selector, inner_prelude)
+        {
             inners.push(ConditionalInner::Nested {
                 nested_selector: nested_sel,
                 body_range: inner_body,
@@ -4856,6 +5214,23 @@ struct HierarchicalRule {
     conditional_header: Option<String>,
 }
 
+fn preserve_body_lines(body: &str) -> Vec<String> {
+    let base_indent = body
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .unwrap_or(0);
+    body.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.get(base_indent..)
+                .unwrap_or(line)
+                .trim_end()
+                .to_string()
+        })
+        .collect()
+}
+
 fn render_cluster(source: &str, parent: &SourceNode, children: &[ClusterChild]) -> String {
     let parent_body_range = parent.body_range.as_ref().expect("style rules have bodies");
     let parent_indent = line_indent(source, parent.start);
@@ -4870,13 +5245,10 @@ fn render_cluster(source: &str, parent: &SourceNode, children: &[ClusterChild]) 
     let trimmed_body = parent_body.trim();
     if !trimmed_body.is_empty() {
         out.push('\n');
-        for line in parent_body.lines() {
-            let trimmed_line = line.trim();
-            if !trimmed_line.is_empty() {
-                out.push_str(&nested_indent);
-                out.push_str(&ensure_semicolon(trimmed_line));
-                out.push('\n');
-            }
+        for line in preserve_body_lines(parent_body) {
+            out.push_str(&nested_indent);
+            out.push_str(&ensure_semicolon(&line));
+            out.push('\n');
         }
     }
 
@@ -4892,12 +5264,7 @@ fn render_cluster(source: &str, parent: &SourceNode, children: &[ClusterChild]) 
             } => {
                 let mut body_lines = Vec::new();
                 if let Some(body_range) = &node.body_range {
-                    for line in source[body_range.clone()].lines() {
-                        let trimmed = line.trim();
-                        if !trimmed.is_empty() {
-                            body_lines.push(trimmed.to_string());
-                        }
-                    }
+                    body_lines = preserve_body_lines(&source[body_range.clone()]);
                 }
                 insert_hierarchical_style(&mut root_rules, nested_selector.trim(), body_lines);
             }
@@ -4907,13 +5274,7 @@ fn render_cluster(source: &str, parent: &SourceNode, children: &[ClusterChild]) 
                 for inner in inners {
                     match inner {
                         ConditionalInner::Direct { body_range } => {
-                            let mut lines = Vec::new();
-                            for line in source[body_range.clone()].lines() {
-                                let trimmed = line.trim();
-                                if !trimmed.is_empty() {
-                                    lines.push(trimmed.to_string());
-                                }
-                            }
+                            let lines = preserve_body_lines(&source[body_range.clone()]);
                             cond_sub_rules.push(HierarchicalRule {
                                 relative_selector: String::new(),
                                 body_lines: lines,
@@ -4925,13 +5286,7 @@ fn render_cluster(source: &str, parent: &SourceNode, children: &[ClusterChild]) 
                             nested_selector,
                             body_range,
                         } => {
-                            let mut lines = Vec::new();
-                            for line in source[body_range.clone()].lines() {
-                                let trimmed = line.trim();
-                                if !trimmed.is_empty() {
-                                    lines.push(trimmed.to_string());
-                                }
-                            }
+                            let lines = preserve_body_lines(&source[body_range.clone()]);
                             cond_sub_rules.push(HierarchicalRule {
                                 relative_selector: nested_selector.trim().to_string(),
                                 body_lines: lines,
@@ -5010,7 +5365,7 @@ fn extract_relative_subselector(parent: &str, child: &str) -> Option<String> {
         .filter(|c| *c == '>' || *c == '+' || *c == '~')
     {
         let after_comb = trimmed[first_char.len_utf8()..].trim();
-        Some(format!("{first_char} {after_comb}"))
+        Some(explicit_relative_combinator(first_char, after_comb))
     } else if remainder
         .as_bytes()
         .first()
@@ -5083,6 +5438,7 @@ fn ensure_semicolon(line: &str) -> std::borrow::Cow<'_, str> {
         || trimmed.ends_with('{')
         || trimmed.ends_with('}')
         || trimmed.ends_with(',')
+        || trimmed.ends_with(':')
         || trimmed.starts_with("//")
         || trimmed.starts_with("/*")
         || !trimmed.contains(':')
@@ -5184,6 +5540,38 @@ pub fn apply_selected_plans(
     Ok(output)
 }
 
+/// Apply all currently available safe/review plans until the source reaches a
+/// fixed point. Plans can overlap, so one disjoint pass may intentionally leave
+/// a second transformation for the next analysis pass.
+pub fn apply_until_stable(
+    path: &Path,
+    source: &str,
+    enabled_rules: &[RuleId],
+    include_review: bool,
+) -> Result<String> {
+    let mut current = source.to_string();
+
+    for _ in 0..32 {
+        let report = analyze_content(path.to_path_buf(), &current, enabled_rules)?;
+        let mut plans = report.plans;
+        for plan in &mut plans {
+            plan.selected =
+                plan.safety == Safety::Safe || (include_review && plan.safety == Safety::Review);
+        }
+
+        let next = apply_selected_plans(&current, &plans, include_review)?;
+        if next == current {
+            return Ok(current);
+        }
+        current = next;
+    }
+
+    anyhow::bail!(
+        "CSS transformations did not reach a stable result after 32 passes for {}",
+        path.display()
+    )
+}
+
 pub fn unified_diff(old: &str, new: &str, old_name: &str, new_name: &str) -> String {
     TextDiff::from_lines(old, new)
         .unified_diff()
@@ -5202,6 +5590,209 @@ mod tests {
     }
 
     #[test]
+    fn extracts_style_blocks_from_template_sources() {
+        let source = r#"@php($title = 'demo')
+<div>
+  <style scoped>
+    .card { color: red; }
+  </style>
+  <style>.badge { color: blue; }</style>
+</div>
+"#;
+        let blocks = extract_style_blocks(source);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(
+            &source[blocks[0].clone()],
+            "\n    .card { color: red; }\n  "
+        );
+        assert_eq!(&source[blocks[1].clone()], ".badge { color: blue; }");
+    }
+
+    #[test]
+    fn transforms_only_embedded_style_contents() {
+        let source = r#"@php($title = 'demo')
+<div class="card">
+  <style>
+    .button { color: red; }
+    .button:hover { color: blue; }
+  </style>
+  {{ $title }}
+</div>
+"#;
+        let output = apply_until_stable(
+            Path::new("view.blade.php"),
+            source,
+            &[RuleId::NestPseudoClass],
+            false,
+        )
+        .unwrap();
+        assert!(output.starts_with("@php($title = 'demo')\n<div class=\"card\">\n  <style>"));
+        assert!(
+            output.contains("&:hover"),
+            "embedded CSS was not transformed: {output}"
+        );
+        assert!(output.contains("{{ $title }}"));
+        assert!(output.ends_with("</div>\n"));
+    }
+
+    #[test]
+    fn plans_selector_lists_inside_nested_style_rules() {
+        let source = r#"<div>
+  <style>
+    .daterangepicker {
+      .next span,
+      .prev span {
+        border-color: #64748b;
+      }
+    }
+  </style>
+</div>
+"#;
+        let report = analyze_content(
+            PathBuf::from("view.blade.php"),
+            source,
+            &[RuleId::ModernizeIs],
+        )
+        .unwrap();
+        assert_eq!(report.plans.len(), 1);
+        assert_eq!(
+            &source[report.plans[0].source_range.start..report.plans[0].source_range.end],
+            ".next span,\n      .prev span "
+        );
+
+        let output = apply_until_stable(
+            Path::new("view.blade.php"),
+            source,
+            &[RuleId::ModernizeIs],
+            false,
+        )
+        .unwrap();
+        assert!(output.contains(":is(.next, .prev) span"));
+        assert!(output.contains("<div>"));
+        assert!(output.contains("</style>"));
+    }
+
+    #[test]
+    fn plans_rules_inside_nested_starting_style_at_rules() {
+        let source = r#".dialog {
+  @starting-style {
+    .dialog-panel:hover,
+    .dialog-panel:focus {
+      opacity: 0;
+    }
+  }
+}
+"#;
+        let report = analyze_content(
+            PathBuf::from("nested-starting-style.css"),
+            source,
+            &[RuleId::ModernizeIs],
+        )
+        .unwrap();
+        assert_eq!(report.plans.len(), 1);
+        assert_eq!(report.plans[0].rules, vec![RuleId::ModernizeIs]);
+
+        let output = apply_until_stable(
+            Path::new("nested-starting-style.css"),
+            source,
+            &[RuleId::ModernizeIs],
+            false,
+        )
+        .unwrap();
+        assert!(output.contains(".dialog-panel:is(:hover, :focus)"));
+        assert!(output.contains("@starting-style"));
+    }
+
+    #[test]
+    fn preserves_nested_starting_style_when_processing_conditional_styles() {
+        let source = r#"@supports selector(details::details-content) {
+  .faq-list {
+    details {
+      &[open]::details-content {
+        height: auto;
+      }
+    }
+
+    @starting-style {
+      details[open]::details-content {
+        height: 0;
+      }
+    }
+  }
+}
+"#;
+        let output = apply_until_stable(
+            Path::new("nested-starting-style.css"),
+            source,
+            &RuleId::ALL,
+            true,
+        )
+        .unwrap();
+        assert_eq!(output.matches("@starting-style").count(), 1, "{output}");
+        assert!(
+            output.contains("details[open]::details-content") && output.contains("height: 0;"),
+            "nested starting-style declaration was lost or changed:\n{output}"
+        );
+    }
+
+    #[test]
+    fn preserves_utf8_declaration_values_during_nesting() {
+        let source = "input[type=checkbox] { content: '✓'; }\n";
+        let output = apply_until_stable(
+            Path::new("utf8.css"),
+            source,
+            &[RuleId::NestAttribute],
+            false,
+        )
+        .unwrap();
+        assert!(
+            output.contains("content: '✓';"),
+            "UTF-8 value changed: {output}"
+        );
+        assert!(!output.contains("Ã"), "mojibake introduced: {output}");
+    }
+
+    #[test]
+    fn does_not_treat_relative_or_already_nested_selectors_as_state_bases() {
+        assert_eq!(extract_base_target("> [class*='col-']"), None);
+        assert_eq!(extract_base_target(":is(.prev, .next):hover"), None);
+        assert_eq!(extract_base_target("&:hover"), None);
+        assert_eq!(extract_base_target(".button:hover"), Some(".button"));
+    }
+
+    #[test]
+    fn does_not_reparent_existing_nesting_selectors() {
+        assert_eq!(
+            selector_relation(".card-body", "&.compact .card-body"),
+            None
+        );
+        assert_eq!(selector_relation("select", "&:hover"), None);
+    }
+
+    #[test]
+    fn marks_mixed_specificity_identical_body_merges_for_review() {
+        let css =
+            ".form-select option { color: white; }\nselect.form-control option { color: white; }\n";
+        let plans = plan(css, &[RuleId::MergeIdenticalRuleBodies]);
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].safety, Safety::Review);
+        assert!(!plans[0].proof.specificity_equivalent);
+    }
+
+    #[test]
+    fn already_nested_selector_lists_reach_a_fixed_point() {
+        let css = ".card {
+  &,
+  &.active {
+    color: red;
+  }
+}
+";
+        let output = apply_until_stable(Path::new("test.css"), css, &RuleId::ALL, false).unwrap();
+        assert_eq!(output, css);
+    }
+
+    #[test]
     fn nests_adjacent_pseudo_and_descendant_rules() {
         let css = ".card {\n  color: red;\n}\n.card:hover {\n  color: blue !important;\n}\n.card .title {\n  font-weight: 700;\n}\n";
         let plans = plan(css, &RuleId::ALL);
@@ -5210,6 +5801,96 @@ mod tests {
         assert!(output.contains("&:hover"));
         assert!(output.contains(".title"));
         assert!(output.contains("color: blue !important;"));
+    }
+
+    #[test]
+    fn calculates_functional_pseudo_specificity_from_the_highest_argument() {
+        assert_eq!(
+            calculate_specificity(":is(.a, #b, div)"),
+            Specificity {
+                ids: 1,
+                classes: 0,
+                elements: 0,
+            }
+        );
+        assert_eq!(
+            calculate_specificity(":has(> .a, #b)"),
+            Specificity {
+                ids: 1,
+                classes: 0,
+                elements: 0,
+            }
+        );
+        assert_eq!(
+            calculate_specificity(":not(.a, #b)"),
+            Specificity {
+                ids: 1,
+                classes: 0,
+                elements: 0,
+            }
+        );
+        assert_eq!(
+            calculate_specificity(":where(#header, .nav, div)"),
+            Specificity::default()
+        );
+        assert_eq!(
+            calculate_specificity(".parent > :has(.a, #b)"),
+            Specificity {
+                ids: 1,
+                classes: 1,
+                elements: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn preserves_not_matching_logic_when_consolidating_only_chained_negations() {
+        assert_eq!(
+            consolidate_not_in_selector(".card:not(.a):not(.b)"),
+            Some((".card:not(.a, .b)".to_string(), true))
+        );
+        assert_eq!(consolidate_not_in_selector(".card:not(.a, .b)"), None);
+        assert_eq!(
+            consolidate_not_in_selector(".card:not(.a), .card:not(.b)"),
+            None
+        );
+    }
+
+    #[test]
+    fn keeps_has_arguments_as_relative_selectors_without_rewriting_the_logic() {
+        let selector = ".parent:has(> .a, + #b, .c .d)";
+        assert_eq!(
+            calculate_specificity(selector),
+            Specificity {
+                ids: 1,
+                classes: 1,
+                elements: 0,
+            }
+        );
+        assert_eq!(factor_with_is(selector), None);
+        assert_eq!(factor_with_where(selector), None);
+    }
+
+    #[test]
+    fn applies_overlapping_plans_until_the_source_is_stable() {
+        let css = r#".states {
+  border: 1px solid transparent;
+}
+
+.states > .bolt:is(:hover, :focus-visible) {
+  outline: 2px solid currentColor;
+}
+
+.states > .bolt,
+.states > .spark {
+  min-block-size: 2rem;
+}
+"#;
+        let output = apply_until_stable(Path::new("test.css"), css, &RuleId::ALL, false).unwrap();
+
+        assert!(output.contains("& > .bolt:is(:hover, :focus-visible) {"));
+        assert!(output.contains("& > :is(.bolt, .spark) {"));
+        assert!(!output.contains(".states > .bolt,\n.states > .spark"));
     }
 
     #[test]
@@ -5275,11 +5956,11 @@ mod tests {
     font-weight: 700;
   }
 
-  > .body {
+  & > .body {
     min-width: 0;
   }
 
-  + .card {
+  & + .card {
     margin-top: 1rem;
   }
 
@@ -5321,6 +6002,7 @@ mod tests {
         assert!(output.contains("&::before,"));
         assert!(output.contains("&::after {"));
         assert!(output.contains("box-sizing: border-box;"));
+        assert!(output.contains("    box-sizing: border-box;"));
     }
 
     #[test]
@@ -5330,6 +6012,54 @@ mod tests {
         assert_eq!(plans.len(), 1);
         let output = apply_selected_plans(css, &plans, false).unwrap();
         assert!(output.contains(".button:is(:hover, :focus, :active)"));
+    }
+
+    #[test]
+    fn never_factors_pseudo_elements_into_functional_pseudo_classes() {
+        for selector in [
+            ".icon:before, .icon:after",
+            ".icon::before, .icon::after",
+            ".icon:first-line, .icon:first-letter",
+            ".icon:is(:before), .icon:is(:after)",
+        ] {
+            assert_eq!(
+                factor_with_is(selector),
+                None,
+                "pseudo-element selector was incorrectly factored: {selector}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_factor_inside_functional_pseudo_arguments() {
+        let selector = ".equivalent-has:has(> .alpha), .equivalent-has:has(> .beta)";
+        assert_eq!(
+            factor_with_is(selector),
+            Some((".equivalent-has:has(> .alpha, > .beta)".to_string(), true))
+        );
+
+        let css = format!("{selector} {{\n  color: seagreen;\n}}\n");
+        let plans = plan(&css, &[RuleId::ModernizeIs]);
+        assert_eq!(plans.len(), 1);
+        let output = apply_selected_plans(&css, &plans, false).unwrap();
+        assert!(output.contains(".equivalent-has:has(> .alpha, > .beta)"));
+    }
+
+    #[test]
+    fn combines_uniform_is_and_where_function_arguments() {
+        assert_eq!(
+            factor_with_is(".card:is(.alpha), .card:is(.beta)"),
+            Some((".card:is(.alpha, .beta)".to_string(), true))
+        );
+        assert_eq!(
+            factor_with_is(".card:where(#alpha), .card:where(.beta)"),
+            Some((".card:where(#alpha, .beta)".to_string(), true))
+        );
+    }
+
+    #[test]
+    fn refuses_to_combine_separate_not_functions() {
+        assert_eq!(factor_with_is(".card:not(.alpha), .card:not(.beta)"), None);
     }
 
     #[test]
@@ -5518,6 +6248,47 @@ mod tests {
     }
 
     #[test]
+    fn emits_explicit_nesting_selector_for_child_combinator() {
+        let css = r#".c-command-hero {
+  display: grid;
+}
+
+.c-command-hero > .c-bolt {
+  z-index: 4;
+}
+
+.c-command-hero + .c-command-hero {
+  margin-block-start: 1rem;
+}
+
+.c-command-hero ~ .c-command-note {
+  color: gray;
+}
+
+.c-command-hero > .c-bolt > .c-bolt__icon {
+  inline-size: 1rem;
+}
+"#;
+        let plans = plan(css, &[RuleId::NestCombinator, RuleId::NestDescendant]);
+        let output = apply_selected_plans(css, &plans, false).unwrap();
+
+        assert!(output.contains("& > .c-bolt {"), "{output}");
+        assert!(output.contains("& + .c-command-hero {"), "{output}");
+        assert!(output.contains("& ~ .c-command-note {"), "{output}");
+        assert!(
+            output.contains("& > .c-bolt > .c-bolt__icon {"),
+            "multi-level combinator should preserve its full selector: {output}"
+        );
+        assert!(
+            !output.contains("& {\n"),
+            "combinator must not be split into a nested block: {output}"
+        );
+        assert!(!output.contains("\n    > {"), "{output}");
+        assert!(!output.contains("\n    + {"), "{output}");
+        assert!(!output.contains("\n    ~ {"), "{output}");
+    }
+
+    #[test]
     fn nests_in_place_input_states() {
         let css = "input:user-invalid {\n  border-color: crimson;\n}\ninput:user-valid {\n  border-color: seagreen;\n}\ninput:placeholder-shown {\n  color: gray;\n}\n";
         let plans = plan(css, &[RuleId::NestPseudoClass]);
@@ -5656,6 +6427,39 @@ mod tests {
     }
 
     #[test]
+    fn gather_keeps_explicit_combinators_as_complete_nested_selectors() {
+        let css = r#".c-command-hero {
+  display: grid;
+}
+
+.c-command-hero > .c-bolt {
+  z-index: 4;
+}
+
+.unrelated {
+  color: gray;
+}
+
+.c-command-hero {
+  border-radius: 0.75rem;
+}
+
+.c-command-hero + .c-command-hero {
+  margin-block-start: 1rem;
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+
+        assert!(output.contains("& > .c-bolt {"), "{output}");
+        assert!(
+            !output.contains("& {\n"),
+            "explicit combinator must not be split: {output}"
+        );
+        assert!(!output.contains("\n    > .c-bolt {"), "{output}");
+    }
+
+    #[test]
     fn test_modernizes_media_range_syntax_no_whitespace() {
         let input = "@media (max-width:60rem) { .content { width: 100%; } }";
         let plans = plan(input, &[RuleId::ModernizeMediaRange]);
@@ -5754,6 +6558,36 @@ mod tests {
         assert!(
             output.contains("+ .tabpanel {") || output.contains("+.tabpanel {"),
             "nested combinator rule missing: {output}"
+        );
+    }
+
+    #[test]
+    fn preserves_multiline_custom_property_values_when_nesting() {
+        let css = r#".card {
+  --shadow:
+    0 1px 2px rgb(0 0 0 / 8%),
+    0 4px 12px rgb(0 0 0 / 5%);
+}
+
+.card:hover {
+  color: blue;
+}
+"#;
+        let plans = plan(css, &[RuleId::NestPseudoClass]);
+        assert!(!plans.is_empty(), "expected a pseudo-class nesting plan");
+        let output = apply_selected_plans(css, &plans, true).unwrap();
+        assert!(
+            output.contains("--shadow:\n"),
+            "custom property was altered: {output}"
+        );
+        assert!(
+            output.contains("0 1px 2px rgb(0 0 0 / 8%),\n    0 4px 12px rgb(0 0 0 / 5%);")
+                || output.contains("0 1px 2px rgb(0 0 0 / 8%),\n      0 4px 12px rgb(0 0 0 / 5%);"),
+            "custom property value was reformatted: {output}"
+        );
+        assert!(
+            !output.contains("--shadow:;"),
+            "multiline value was terminated early: {output}"
         );
     }
 
@@ -6162,6 +6996,44 @@ mod tests {
                 "* must not absorb skip-link rules: {output}"
             );
         }
+    }
+
+    #[test]
+    fn precise_conditional_home_is_not_hidden_by_universal_gather() {
+        let css = r#"*
+{
+    margin: 0;
+}
+
+.faq-list {
+    display: grid;
+}
+
+@supports selector(details::details-content) {
+    .faq-list {
+        details {
+            &::details-content {
+                height: 0;
+            }
+        }
+
+        @starting-style {
+            details[open]::details-content {
+                height: 0;
+            }
+        }
+    }
+}
+"#;
+        let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
+        assert!(
+            plans.iter().any(|p| p.reason.contains("'.faq-list'")),
+            "precise conditional home was suppressed: {plans:?}"
+        );
+        assert!(
+            !plans.iter().any(|p| p.reason.contains("'*'")),
+            "universal gather should not be planned: {plans:?}"
+        );
     }
 
     #[test]

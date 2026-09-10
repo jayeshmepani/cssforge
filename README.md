@@ -37,20 +37,20 @@ Download from [GitHub Releases](https://github.com/jayeshmepani/cssforge/release
 #### 🐧 Linux (x64 / ARM64)
 ```bash
 # Extract and copy to local user bin (no sudo needed):
-tar -xzf cssforge-v0.4.0-linux-x64.tar.gz
-cp cssforge-v0.4.0-linux-x64/cssforge ~/.local/bin/
+tar -xzf cssforge-v0.5.0-linux-x64.tar.gz
+cp cssforge-v0.5.0-linux-x64/cssforge ~/.local/bin/
 chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🍏 macOS (Apple Silicon M-Series)
 ```bash
-tar -xzf cssforge-v0.4.0-macos-arm64.tar.gz
-cp cssforge-v0.4.0-macos-arm64/cssforge ~/.local/bin/
+tar -xzf cssforge-v0.5.0-macos-arm64.tar.gz
+cp cssforge-v0.5.0-macos-arm64/cssforge ~/.local/bin/
 chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🪟 Windows (x64 / ARM64 Snapdragon)
-Extract `cssforge.exe` from `cssforge-v0.4.0-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
+Extract `cssforge.exe` from `cssforge-v0.5.0-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
 
 ---
 
@@ -70,6 +70,19 @@ When executing `cssforge` without arguments in any project directory (`.`), CSSF
 * `*.map.css` — Source map artifacts.
 
 > **Tip (Explicit Target Override)**: If you explicitly specify a file path (e.g. `cssforge interactive ./dist/bundle.min.css`), CSSForge will directly process the requested file. Standard `.gitignore` rules are also natively respected.
+
+### Embedded `<style>` blocks
+
+CSSForge also discovers template files that contain `<style>...</style>` blocks. Supported source types include Blade/PHP, HTML, Vue, Svelte, Astro, Twig, ERB, and Handlebars. Only the CSS between the tags is analyzed and transformed; the surrounding template, PHP, HTML, and Blade expressions are preserved. Multiple style blocks and attributes such as `<style scoped>` are supported.
+
+For example:
+
+```bash
+cssforge analyze resources/views --preset refactor
+cssforge apply resources/views --preset refactor --output new-file
+```
+
+Embedded template output uses a template-safe name such as `daterangepicker.blade.modern.php`.
 
 ---
 

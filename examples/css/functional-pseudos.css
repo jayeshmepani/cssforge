@@ -1,0 +1,115 @@
+/*
+ * Functional pseudo-class stress fixture.
+ *
+ * This file intentionally keeps the source selectors flat so CSSForge can
+ * exercise detection, specificity checks, and selector formation in one run.
+ */
+
+/* :is() — forgiving selector list, OR matching, highest-argument specificity. */
+.is-subject:is(.alpha, #priority, button) {
+  color: darkslateblue;
+}
+
+.is-combinator > :is(.alpha, #priority, button) {
+  padding: 0.5rem;
+}
+
+.is-pseudo:is(:hover, :focus-visible, [aria-current="page"]) {
+  outline: 2px solid currentColor;
+}
+
+/* :where() — OR matching with zero specificity regardless of its arguments. */
+.where-subject:where(#header, .navigation, nav) {
+  display: block;
+}
+
+.where-combinator > :where(.alpha, #priority, button) {
+  margin-inline: auto;
+}
+
+.where-complex:where(.alpha .label, #priority > .label, button[data-kind="label"]) {
+  font-weight: 600;
+}
+
+/* :has() — strict relative selector list with OR matching. */
+.has-descendant:has(.alpha, #priority, button) {
+  background: aliceblue;
+}
+
+.has-relative:has(> .alpha, + #priority, ~ button) {
+  border-color: steelblue;
+}
+
+.has-nested:has(.card > .title, .card .meta[data-state="ready"]) {
+  contain: layout;
+}
+
+/* :not() — one negation excludes the entire argument set. */
+.not-combined:not(.disabled, [aria-disabled="true"], #locked) {
+  cursor: pointer;
+}
+
+/* Chained negations are matching-equivalent to one comma-list :not(). */
+.not-chain:not(.disabled, [aria-disabled="true"]){
+  user-select: none;
+}
+
+/* These are intentionally separate: do not combine them into one :not(). */
+.not-separated:not(.disabled),
+.not-separated:not([aria-disabled="true"]) {
+  opacity: 0.95;
+}
+
+/* Matching-set equivalence for OR pseudo-classes, with uniform specificity. */
+.equivalent-is:is(.alpha, .beta){
+  color: seagreen;
+}
+
+.equivalent-has:has(> .alpha, > .beta){
+  accent-color: seagreen;
+}
+
+.equivalent-where:where(.alpha, .beta){
+  text-decoration-line: underline;
+}
+
+/* Mixed specificity: matching remains equivalent, cascade does not. */
+.mixed-is:is(.alpha, #priority),
+.mixed-has:has(.alpha, #priority),
+.mixed-not:not(.alpha, #priority) {
+  color: darkorange;
+}
+
+/* Functional pseudo-classes nested inside one another. */
+.nested-functions:is(:not(.muted, [aria-hidden="true"]), :where(.interactive)) {
+  transition: opacity 150ms ease;
+}
+
+.nested-has:has(> :is(.alpha, .beta), > :where(.optional, .fallback)) {
+  min-block-size: 2rem;
+}
+
+/* Explicit native nesting anchor: the combinator is part of the selector. */
+.nesting-anchor {
+  color: inherit;
+
+  & > :has(.alpha, #priority) {
+    color: rebeccapurple;
+  }
+}
+
+/*
+ * Parser-only cases. They stay commented so the normal fixture remains
+ * parseable; copy one into a temporary file when testing invalid recovery.
+ *
+ * .forgiving:is(.valid, :future-pseudo) { color: green; }
+ * .forgiving:where(.valid, :future-pseudo) { color: green; }
+ * .strict-not:not(.valid, :future-pseudo) { color: red; }
+ * .strict-has:has(> .valid, > :future-pseudo) { color: red; }
+ * > :has(.child) { color: red; }
+ * .invalid-split {
+ *   > {
+ *     .child { color: red; }
+ *   }
+ * }
+ */

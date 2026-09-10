@@ -135,7 +135,7 @@ header {
     backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border-subtle);
 
-    @media (min-width: 901px) {
+    @media (width >= 901px){
         padding-block: 1.5rem;
     }
 
@@ -158,7 +158,7 @@ header {
     place-content: center;
     place-items: center;
 
-    @media (min-width: 900px) {
+    @media (width >= 900px){
         position: relative;
         display: flex;
     }
@@ -940,17 +940,18 @@ footer {
         flex-direction: row;
     }
 
-    .hero-quote::before,
-    .hero-quote::after {
-        font-size: 3rem;
-    }
+    .hero-quote {
+        &::before, &::after {
+            font-size: 3rem;
+        }
 
-    .hero-quote::before {
-        left: 0;
-    }
+        &::before {
+            left: 0;
+        }
 
-    .hero-quote::after {
-        right: 0;
+        &::after {
+            right: 0;
+        }
     }
 }
 

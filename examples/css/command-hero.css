@@ -1,0 +1,144 @@
+/* Flat source stress fixture for CSSForge's native nesting conversion. */
+
+/* Basic child combinator. Expected nested selector: & > .c-bolt */
+.c-command-hero {
+  display: grid;
+  gap: 1rem;
+  border-radius: 0.75rem;
+
+  & > .c-bolt {
+    z-index: 4;
+    grid-column: 1 / -1;
+  }
+
+  & + .c-command-hero {
+    margin-block-start: 2rem;
+  }
+
+  & ~ .c-command-note {
+    color: var(--text-2, #333);
+  }
+
+  .c-bolt {
+    color: inherit;
+  }
+}
+
+/* Child combinators with compound selectors and pseudo-elements. */
+.c-command-hero--compact {
+  padding: 1rem;
+
+  & > .c-bolt.is-primary {
+    background: var(--accent, royalblue);
+  }
+
+  & > .c-bolt::before {
+    content: "";
+    display: block;
+  }
+
+  & > [data-role="bolt"] {
+    border: 1px solid currentColor;
+  }
+}
+
+/* Multiple levels: the second child is relative to the first child. */
+.c-command-hero--nested {
+  display: flex;
+
+  & > .c-bolt {
+    display: grid;
+
+    & > .c-bolt__icon {
+      inline-size: 1.25rem;
+      block-size: 1.25rem;
+
+      &:hover {
+        opacity: 0.8;
+      }
+    }
+  }
+}
+
+/* Sibling combinators: adjacent and general sibling. */
+.c-command-hero--siblings {
+  display: block;
+
+  & + .c-command-hero--siblings {
+    margin-block-start: 2rem;
+  }
+
+  & ~ .c-command-note {
+    color: var(--text-2, #333);
+  }
+}
+
+/* Whitespace and selector-shape variations. */
+.c-command-hero--whitespace {
+  min-block-size: 10rem;
+
+  & > .c-bolt[data-state="ready"] {
+    color: seagreen;
+  }
+
+  & + .c-command-hero--whitespace {
+    margin-block-start: 1rem;
+  }
+
+  & ~ .c-command-note {
+    margin-block-start: 0.5rem;
+  }
+}
+
+/* Combinators inside a longer selector must preserve the complete suffix. */
+.c-command-hero--toolbar {
+  display: grid;
+
+  & > .c-toolbar > .c-toolbar__group {
+    display: flex;
+    gap: 0.5rem;
+
+    & + .c-toolbar__group {
+      margin-inline-start: auto;
+    }
+  }
+}
+
+/* Selector lists and functional pseudo-classes are useful parser edge cases. */
+.c-command-hero--states {
+  border: 1px solid transparent;
+  & > .c-bolt:is(:hover, :focus-visible) {
+  outline: 2px solid currentColor;
+  }
+  & > .c-bolt:not([aria-disabled="true"]) {
+  cursor: pointer;
+  }
+
+  & > :is(.c-bolt, .c-spark) {
+    min-block-size: 2rem;
+  }
+}
+
+/* Similar-looking selectors must remain distinct and must not be merged. */
+.c-command-heroistic {
+  display: block;
+
+  & > .c-bolt {
+    z-index: 2;
+  }
+}
+
+
+/* A comment and unrelated rule between blocks should prevent unsafe gathering. */
+.c-command-hero--separated {
+  color: inherit;
+
+  & > .c-bolt {
+    z-index: 3;
+  }
+}
+
+/* Keep this unrelated rule in place while testing adjacency boundaries. */
+.c-command-unrelated {
+  color: gray;
+}

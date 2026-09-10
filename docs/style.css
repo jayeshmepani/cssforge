@@ -219,8 +219,7 @@
   }
 
   :where(input, textarea){
-    &:focus,
-    &:focus-visible {
+    &:is(:focus, :focus-visible){
       outline: none;
       border-color: var(--border-focus);
       box-shadow: 0 0 0 3px var(--brand-cyan-soft);
@@ -384,8 +383,7 @@
                     box-shadow var(--dur-fast) var(--ease-out),
                     background-color var(--dur-fast) var(--ease-out);
 
-        &:focus,
-        &:focus-visible {
+        &:is(:focus, :focus-visible){
           outline: none;
           border-color: var(--border-focus);
           background: var(--surface-raised);

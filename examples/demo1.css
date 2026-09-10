@@ -853,8 +853,8 @@ article:has(h2 + p) h2 {
 /* CASCADE LAYERS                                                             */
 /* ========================================================================== */
 
-@layer components {
-  .layered-card {
+.layered-card {
+  @layer components {
     padding: 1rem;
     color: navy;
 
@@ -862,6 +862,13 @@ article:has(h2 + p) h2 {
       color: inherit;
     }
   }
+
+  @layer overrides {
+    color: darkgreen;
+  }
+}
+
+@layer components {
 
   .cascade-target {
     color: purple;
@@ -879,9 +886,6 @@ article:has(h2 + p) h2 {
 }
 
 @layer overrides {
-  .layered-card {
-    color: darkgreen;
-  }
 
   :where(.layer-important, .cascade-target) {
     color: orange !important;
@@ -3296,19 +3300,15 @@ body:has(dialog[open]) :where(header, main, footer) {
 
   >.widget {
     min-inline-size: 0;
-
     &:has(.chart) {
       min-block-size: 18rem;
     }
-
     >.header {
       display: flex;
       justify-content: space-between;
     }
-  }
 
-  @supports (grid-template-rows: subgrid) {
-    >.widget {
+    @supports (grid-template-rows: subgrid) {
       grid-template-rows: subgrid;
     }
   }
@@ -5108,4 +5108,3 @@ body:has(dialog[open]) :where(header, main, footer) {
 }
 
 /* separator comment that should remain where it is */
-

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use ignore::WalkBuilder;
 use std::{
+    fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -30,15 +31,23 @@ const IGNORED_FILE_SUFFIXES: &[&str] = &[
     ".bundle.css",
     ".chunk.css",
     ".map.css",
+    ".modern.php",
+    ".modern.html",
+    ".modern.vue",
+    ".modern.svelte",
+];
+
+const EMBEDDED_STYLE_EXTENSIONS: &[&str] = &[
+    "php", "html", "htm", "vue", "svelte", "astro", "twig", "html", "erb", "hbs", "blade",
 ];
 
 pub fn discover_css_files(root: &Path) -> Result<Vec<PathBuf>> {
     if root.is_file() {
-        if root
+        let is_css = root
             .extension()
             .and_then(|s| s.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("css"))
-        {
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("css"));
+        if is_css || is_eligible_source_file(root)? {
             return Ok(vec![root.to_path_buf()]);
         }
         return Ok(Vec::new());
@@ -68,7 +77,7 @@ pub fn discover_css_files(root: &Path) -> Result<Vec<PathBuf>> {
             continue;
         }
         let path = entry.into_path();
-        if is_eligible_css_file(&path) {
+        if is_eligible_source_file(&path)? {
             files.push(path);
         }
     }
@@ -77,12 +86,16 @@ pub fn discover_css_files(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn is_eligible_css_file(path: &Path) -> bool {
+fn is_eligible_source_file(path: &Path) -> Result<bool> {
     let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
-        return false;
+        return Ok(false);
     };
-    if !ext.eq_ignore_ascii_case("css") {
-        return false;
+    if !ext.eq_ignore_ascii_case("css")
+        && !EMBEDDED_STYLE_EXTENSIONS
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(ext))
+    {
+        return Ok(false);
     }
 
     let file_name = path
@@ -93,7 +106,7 @@ fn is_eligible_css_file(path: &Path) -> bool {
 
     for suffix in IGNORED_FILE_SUFFIXES {
         if file_name.ends_with(suffix) {
-            return false;
+            return Ok(false);
         }
     }
 
@@ -103,11 +116,22 @@ fn is_eligible_css_file(path: &Path) -> bool {
             && let Some(s) = os_str.to_str()
             && IGNORED_DIRS.iter().any(|d| d.eq_ignore_ascii_case(s))
         {
-            return false;
+            return Ok(false);
         }
     }
 
-    true
+    if ext.eq_ignore_ascii_case("css") {
+        return Ok(true);
+    }
+
+    let source = fs::read_to_string(path)
+        .with_context(|| format!("failed to read candidate template {}", path.display()))?;
+    Ok(contains_style_tag(&source))
+}
+
+fn contains_style_tag(source: &str) -> bool {
+    let lower = source.to_ascii_lowercase();
+    lower.contains("<style") && lower.contains("</style")
 }
 
 pub fn is_git_dirty(path: &Path) -> bool {
@@ -138,6 +162,8 @@ mod tests {
         fs::create_dir_all(&temp_dir)?;
 
         let regular_css = temp_dir.join("style.css");
+        let blade_view = temp_dir.join("view.blade.php");
+        let php_without_style = temp_dir.join("plain.php");
         let sub_css = temp_dir.join("sub").join("app.css");
         let modern_css = temp_dir.join("demo.modern.css");
         let min_css = temp_dir.join("bundle.min.css");
@@ -150,6 +176,11 @@ mod tests {
         fs::create_dir_all(temp_dir.join("target"))?;
 
         fs::write(&regular_css, "body { margin: 0; }")?;
+        fs::write(
+            &blade_view,
+            "<div><style>.btn { color: red; }</style></div>",
+        )?;
+        fs::write(&php_without_style, "<?php echo 'no css'; ?>")?;
         fs::write(&sub_css, ".btn { color: red; }")?;
         fs::write(&modern_css, ".modern { color: green; }")?;
         fs::write(&min_css, ".min{color:blue;}")?;
@@ -163,9 +194,11 @@ mod tests {
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
             .collect();
 
-        assert_eq!(file_names.len(), 2);
+        assert_eq!(file_names.len(), 3);
         assert!(file_names.contains(&"style.css".to_string()));
         assert!(file_names.contains(&"app.css".to_string()));
+        assert!(file_names.contains(&"view.blade.php".to_string()));
+        assert!(!file_names.contains(&"plain.php".to_string()));
         assert!(!file_names.contains(&"demo.modern.css".to_string()));
         assert!(!file_names.contains(&"bundle.min.css".to_string()));
         assert!(!file_names.contains(&"legacy.bak.css".to_string()));

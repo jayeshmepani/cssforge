@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use cssforge_core::{
-    OutputMode, OutputOptions, Preset, RuleSection, Safety, analyze_workspace,
-    apply_selected_plans, discover_css_files, rule_definitions, write_result,
+    OutputMode, OutputOptions, Preset, RuleSection, analyze_workspace, apply_until_stable,
+    discover_css_files, rule_definitions, write_result,
 };
 use std::{fs, path::PathBuf};
 
@@ -256,12 +256,8 @@ fn apply_command(
     for file in &report.files {
         let original = fs::read_to_string(&file.path)
             .with_context(|| format!("failed to read {}", file.path.display()))?;
-        let mut plans = file.plans.clone();
-        for plan in &mut plans {
-            plan.selected =
-                plan.safety == Safety::Safe || (allow_review && plan.safety == Safety::Review);
-        }
-        let transformed = apply_selected_plans(&original, &plans, allow_review)?;
+        let transformed =
+            apply_until_stable(&file.path, &original, &preset.enabled_rules(), allow_review)?;
         if transformed == original {
             continue;
         }

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cssforge_core::{
     OutputMode, OutputOptions, PlanEntry, Preset, RuleDefinition, RuleId, Safety, WorkspaceReport,
-    WriteResult, analyze_workspace, apply_selected_plans, discover_css_files, is_git_dirty,
+    WriteResult, analyze_workspace, apply_until_stable, discover_css_files, is_git_dirty,
     rule_definitions, unified_diff, write_result,
 };
 use std::{fs, path::PathBuf};
@@ -62,6 +62,7 @@ pub struct App {
     pub output_mode: OutputMode,
     pub output_cursor: usize,
     pub report: Option<WorkspaceReport>,
+    analysis_dirty: bool,
     pub screen: Screen,
     pub file_cursor: usize,
     pub rule_cursor: usize,
@@ -101,7 +102,7 @@ impl App {
             .position(|m| *m == output_mode)
             .unwrap_or(1);
 
-        let mut app = Self {
+        let app = Self {
             root,
             files,
             rules,
@@ -109,6 +110,7 @@ impl App {
             output_mode,
             output_cursor,
             report: None,
+            analysis_dirty: true,
             screen: Screen::Files,
             file_cursor: 0,
             rule_cursor: 0,
@@ -121,7 +123,6 @@ impl App {
             stdout_after_exit: Vec::new(),
             write_results: Vec::new(),
         };
-        app.analyze()?;
         Ok(app)
     }
 
@@ -142,13 +143,18 @@ impl App {
     }
 
     pub fn analyze(&mut self) -> Result<()> {
+        if !self.analysis_dirty && self.report.is_some() {
+            return Ok(());
+        }
         let files = self.selected_files();
         let rules = self.enabled_rules();
         if files.is_empty() || rules.is_empty() {
             self.report = None;
+            self.analysis_dirty = false;
             return Ok(());
         }
         self.report = Some(analyze_workspace(&self.root, &files, &rules)?);
+        self.analysis_dirty = false;
         self.plan_cursor = 0;
         self.diff_scroll = 0;
         self.refresh_diff()?;
@@ -171,6 +177,7 @@ impl App {
             .collect();
         self.file_cursor = self.file_cursor.min(self.files.len().saturating_sub(1));
         self.git_dirty = is_git_dirty(&self.root);
+        self.analysis_dirty = true;
         self.analyze()
     }
 
@@ -243,7 +250,12 @@ impl App {
         for file in &report.files {
             let original = fs::read_to_string(&file.path)
                 .with_context(|| format!("failed to read {} before apply", file.path.display()))?;
-            let transformed = apply_selected_plans(&original, &file.plans, true)?;
+            // The TUI is an interactive safety boundary: review plans are
+            // shown in the plan/diff screen, but must not be applied merely
+            // because a preset enabled their rule.  CLI callers can opt in
+            // explicitly with `--allow-review`.
+            let transformed =
+                apply_until_stable(&file.path, &original, &self.enabled_rules(), false)?;
             if transformed == original {
                 continue;
             }
@@ -405,6 +417,7 @@ impl App {
                 for file in &mut self.files {
                     file.selected = !all_selected;
                 }
+                self.analysis_dirty = true;
                 self.status = if all_selected {
                     "Deselected all files.".to_string()
                 } else {
@@ -416,6 +429,7 @@ impl App {
                 for rule in &mut self.rules {
                     rule.enabled = !all_enabled;
                 }
+                self.analysis_dirty = true;
                 self.preset = Preset::Custom;
                 self.status = if all_enabled {
                     "Disabled all rules.".to_string()
@@ -437,6 +451,7 @@ impl App {
             Screen::Files => {
                 if let Some(item) = self.files.get_mut(self.file_cursor) {
                     item.selected = !item.selected;
+                    self.analysis_dirty = true;
                     let file_name = item.path.file_name().unwrap_or_default().to_string_lossy();
                     self.status = if item.selected {
                         format!("Selected {file_name}")
@@ -448,6 +463,7 @@ impl App {
             Screen::Rules => {
                 if let Some(item) = self.rules.get_mut(self.rule_cursor) {
                     item.enabled = !item.enabled;
+                    self.analysis_dirty = true;
                     self.preset = Preset::Custom;
                     let title = item.definition.title;
                     self.status = if item.enabled {
@@ -574,6 +590,7 @@ impl App {
             for item in &mut self.rules {
                 item.enabled = enabled.contains(&item.definition.id);
             }
+            self.analysis_dirty = true;
         }
         self.status = format!("Preset set to {preset}.");
     }
@@ -607,6 +624,7 @@ mod tests {
         let mut app = App::new(temp_dir.clone())?;
         assert_eq!(app.screen, Screen::Files);
         assert!(!app.files.is_empty());
+        assert!(app.report.is_none(), "analysis is deferred until Output");
 
         // Step 1: Files -> Press Enter -> Rules
         app.handle_key(make_key(KeyCode::Enter))?;

@@ -1,4 +1,7 @@
-use crate::{engine::unified_diff, model::OutputMode};
+use crate::{
+    engine::{extract_style_blocks, unified_diff},
+    model::OutputMode,
+};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -52,7 +55,11 @@ pub fn write_result(
             message: "dry run: no file written".into(),
         }),
         OutputMode::NewFile => {
-            let target = modern_path(path, &options.suffix);
+            let target = modern_path(
+                path,
+                &options.suffix,
+                !extract_style_blocks(original).is_empty(),
+            );
             write_atomic(&target, transformed)?;
             Ok(written(
                 options.mode,
@@ -157,7 +164,15 @@ fn written(
     }
 }
 
-fn modern_path(path: &Path, suffix: &str) -> PathBuf {
+fn modern_path(path: &Path, suffix: &str, embedded: bool) -> PathBuf {
+    if embedded {
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("template");
+        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("html");
+        return path.with_file_name(format!("{stem}.modern.{ext}"));
+    }
     let stem = path
         .file_stem()
         .and_then(|s| s.to_str())
