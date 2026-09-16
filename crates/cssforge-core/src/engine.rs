@@ -1469,7 +1469,7 @@ fn plan_nest_in_place_adjacent_states(
 }
 
 fn extract_base_target(selector: &str) -> Option<&str> {
-    if contains_top_level_comma(selector) {
+    if contains_top_level_comma(selector) || selector_contains_nesting_amp(selector) {
         return None;
     }
     if let Some(pos) = selector.find(':')
@@ -1673,6 +1673,18 @@ fn appended_nesting_selector_raw(base: &str, candidate_sel: &str) -> Option<Stri
 }
 
 fn appended_nesting_selector(base: &str, candidate_sel: &str) -> Option<String> {
+    let base = base.trim();
+    let candidate_sel = candidate_sel.trim();
+    // Suffix replacement only: `tr:last-child td` under `td` would become
+    // `tr:last-child &`, then `tr { &:last-child & }`, which is `td tr`.
+    // Do not steal a different state home. `:not(:focus-visible)` wrapping
+    // is not a suffix replacement and must still become `:not(&)`.
+    if candidate_sel.ends_with(base)
+        && let Some(home) = extract_base_target(candidate_sel)
+        && home != base
+    {
+        return None;
+    }
     let nested = appended_nesting_selector_raw(base, candidate_sel)?;
     // Refuse a nest that would be interpreted as a descendant. `&` anywhere
     // (including `:not(&)`) marks the selector as non-relative.
@@ -2004,6 +2016,56 @@ fn assign_gather_home<'a>(
 }
 
 const GATHERABLE_CONDITIONALS: &[&str] = &["media", "supports", "container", "starting-style"];
+
+fn is_gatherable_conditional(node: &SourceNode) -> bool {
+    matches!(
+        &node.kind,
+        NodeKind::AtBlock { name, .. } if GATHERABLE_CONDITIONALS.contains(&name.as_str())
+    )
+}
+
+fn collect_conditional_style_leaves(source: &str, node: &SourceNode, out: &mut Vec<SourceNode>) {
+    let Some(body_range) = &node.body_range else {
+        return;
+    };
+    for child in scan_nodes(source, body_range.clone()) {
+        match &child.kind {
+            NodeKind::Style => out.push(child),
+            NodeKind::AtBlock { .. } if is_gatherable_conditional(&child) => {
+                collect_conditional_style_leaves(source, &child, out);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn conditional_tree_is_pure(source: &str, node: &SourceNode) -> bool {
+    let Some(body_range) = &node.body_range else {
+        return false;
+    };
+    let inner = scan_nodes(source, body_range.clone());
+    if inner.is_empty() {
+        return false;
+    }
+    let has_style = inner.iter().any(|n| matches!(n.kind, NodeKind::Style));
+    let has_nested_at = inner.iter().any(is_gatherable_conditional);
+    if inner
+        .iter()
+        .any(|n| !matches!(n.kind, NodeKind::Style) && !is_gatherable_conditional(n))
+    {
+        return false;
+    }
+    // Mixed direct styles + nested at-rules (e.g. `@supports { details {}
+    // @starting-style {} }`) must stay grouped; extracting styles would
+    // drop the nested at-block.
+    if has_style && has_nested_at {
+        return false;
+    }
+    inner
+        .iter()
+        .filter(|n| is_gatherable_conditional(n))
+        .all(|n| conditional_tree_is_pure(source, n))
+}
 /// `@layer` / `@scope` are NOT gather containers. Walking into them and
 /// dumping members into the first home moves declarations across cascade
 /// layers (e.g. `:root` in `@layer base` into `@layer tokens`).
@@ -2125,15 +2187,13 @@ fn push_style_member_into_merge(
     }
 }
 
-fn format_conditional_group_into_lines(
+fn inverted_conditional_body_lines(
     first_sel: &str,
-    at_header: &str,
     inners: &[&SourceNode],
     source: &str,
-    nested_indent: &str,
+    inner_indent: &str,
     unit: &str,
 ) -> Vec<String> {
-    let level2 = format!("{nested_indent}{unit}");
     let mut direct_decls = Vec::new();
     let mut nested = Vec::new();
 
@@ -2154,9 +2214,8 @@ fn format_conditional_group_into_lines(
 
     let nested = factor_related_nested_rules(merge_same_prelude_nests(nested));
     let mut lines = Vec::new();
-    lines.push(format!("{nested_indent}{at_header} {{"));
     for d in &direct_decls {
-        lines.push(format!("{level2}{}", ensure_semicolon(d)));
+        lines.push(format!("{inner_indent}{}", ensure_semicolon(d)));
     }
     for nr in &nested {
         if let Some(sel) = nested_rule_prelude(nr).map(str::to_string) {
@@ -2165,16 +2224,63 @@ fn format_conditional_group_into_lines(
                 sel,
                 body: nested_rule_inner(nr),
             };
-            for line in render_item_indented(&item, &level2, unit).lines() {
+            for line in render_item_indented(&item, inner_indent, unit).lines() {
                 lines.push(line.to_string());
             }
         } else {
             for line in nr.lines() {
                 let trimmed = line.trim();
                 if !trimmed.is_empty() {
-                    lines.push(format!("{level2}{}", ensure_semicolon(trimmed)));
+                    lines.push(format!("{inner_indent}{}", ensure_semicolon(trimmed)));
                 }
             }
+        }
+    }
+    lines
+}
+
+fn format_conditional_tree(
+    first_sel: &str,
+    at_node: &SourceNode,
+    inners: &[&SourceNode],
+    source: &str,
+    nested_indent: &str,
+    unit: &str,
+) -> Vec<String> {
+    let owned: HashSet<usize> = inners.iter().map(|n| n.start).collect();
+    format_at_subtree(first_sel, at_node, &owned, source, nested_indent, unit)
+}
+
+fn format_at_subtree(
+    first_sel: &str,
+    at_node: &SourceNode,
+    owned: &HashSet<usize>,
+    source: &str,
+    nested_indent: &str,
+    unit: &str,
+) -> Vec<String> {
+    let Some(body_range) = &at_node.body_range else {
+        return Vec::new();
+    };
+    let header = at_node.prelude(source).trim();
+    let inner_nodes = scan_nodes(source, body_range.clone());
+    let level2 = format!("{nested_indent}{unit}");
+    let direct: Vec<&SourceNode> = inner_nodes
+        .iter()
+        .filter(|n| matches!(n.kind, NodeKind::Style) && owned.contains(&n.start))
+        .collect();
+    let mut lines = Vec::new();
+    lines.push(format!("{nested_indent}{header} {{"));
+    if !direct.is_empty() {
+        lines.extend(inverted_conditional_body_lines(
+            first_sel, &direct, source, &level2, unit,
+        ));
+    }
+    for child in &inner_nodes {
+        if is_gatherable_conditional(child) {
+            lines.extend(format_at_subtree(
+                first_sel, child, owned, source, &level2, unit,
+            ));
         }
     }
     lines.push(format!("{nested_indent}}}"));
@@ -2431,6 +2537,40 @@ fn is_at_rule_prelude(sel: &str) -> bool {
     sel.trim_start().starts_with('@')
 }
 
+fn split_compound_pseudo(sel: &str) -> Option<(String, String)> {
+    let sel = sel.trim();
+    if sel.is_empty() || selector_contains_nesting_amp(sel) {
+        return None;
+    }
+    let mut paren = 0usize;
+    let mut brack = 0usize;
+    for (i, c) in sel.char_indices() {
+        match c {
+            '(' => paren += 1,
+            ')' => paren = paren.saturating_sub(1),
+            '[' => brack += 1,
+            ']' => brack = brack.saturating_sub(1),
+            ':' if paren == 0 && brack == 0 && i > 0 => {
+                let rest = &sel[i..];
+                if rest.starts_with(":not(")
+                    || rest.starts_with(":is(")
+                    || rest.starts_with(":where(")
+                    || rest.starts_with(":has(")
+                {
+                    continue;
+                }
+                let parent = sel[..i].trim();
+                if parent.is_empty() {
+                    return None;
+                }
+                return Some((parent.to_string(), format!("&{rest}")));
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn synthesizable_parent(sel: &str) -> Option<(String, String)> {
     let sel = sel.trim();
     // A selector containing `&` is already expressed in native nesting
@@ -2465,7 +2605,7 @@ fn synthesizable_parent(sel: &str) -> Option<(String, String)> {
         }
         return Some((parent?, children.join(", ")));
     }
-    split_relative_combinator(sel)
+    split_relative_combinator(sel).or_else(|| split_compound_pseudo(sel))
 }
 
 fn nest_items_under_existing(items: Vec<NestedRuleItem>) -> Vec<NestedRuleItem> {
@@ -2714,6 +2854,7 @@ fn render_item_indented(item: &NestedRuleItem, indent: &str, unit: &str) -> Stri
     out
 }
 
+#[allow(dead_code)]
 fn leftover_style_replacements(
     source: &str,
     nodes: &[SourceNode],
@@ -2825,25 +2966,46 @@ fn ranges_overlap(a: &SourceRange, b: &SourceRange) -> bool {
     a.start < b.end && b.start < a.end
 }
 
+fn plan_safety_rank(plan: &PlanEntry) -> u8 {
+    match plan.safety {
+        Safety::Safe => 0,
+        Safety::NoOp => 1,
+        Safety::Review => 2,
+        Safety::Unsafe => 3,
+        Safety::Unsupported => 4,
+    }
+}
+
 fn select_disjoint_plan_indices(plans: &[PlanEntry]) -> Vec<usize> {
     let mut primary: Vec<usize> = (0..plans.len())
         .filter(|&i| !is_gather_delete(&plans[i]))
         .collect();
+    // Prefer SAFE local nests over overlapping REVIEW gathers. A gather plan's
+    // source_range spans from the first related rule to the last, including
+    // unrelated intervening rules. Greedy document-order selection would keep
+    // that review span and drop the safe nests inside it, which then never
+    // apply in the TUI (review is not auto-applied).
     primary.sort_by(|&i, &j| {
-        plans[i]
-            .source_range
-            .start
-            .cmp(&plans[j].source_range.start)
+        plan_safety_rank(&plans[i])
+            .cmp(&plan_safety_rank(&plans[j]))
+            .then_with(|| {
+                plans[i]
+                    .source_range
+                    .start
+                    .cmp(&plans[j].source_range.start)
+            })
             .then_with(|| plans[j].source_range.end.cmp(&plans[i].source_range.end))
     });
 
-    let mut kept = Vec::new();
-    let mut last_end = 0usize;
+    let mut kept: Vec<usize> = Vec::new();
     for i in primary {
-        if plans[i].source_range.start >= last_end {
-            last_end = plans[i].source_range.end;
-            kept.push(i);
+        if kept
+            .iter()
+            .any(|&k| ranges_overlap(&plans[k].source_range, &plans[i].source_range))
+        {
+            continue;
         }
+        kept.push(i);
     }
 
     let mut kept_gather_keys = HashSet::new();
@@ -2966,9 +3128,9 @@ fn format_merged_rule(
                     .iter()
                     .any(|inner| inner.prelude(source).trim() == first_sel);
             if invert_group {
-                let extra = format_conditional_group_into_lines(
+                let extra = format_conditional_tree(
                     first_sel,
-                    at_header,
+                    at_node,
                     &related,
                     source,
                     &nested_indent,
@@ -3360,16 +3522,34 @@ fn collect_gather_cluster(
             if !GATHERABLE_CONDITIONALS.contains(&name.as_str()) {
                 continue;
             }
-            // A conditional block containing another at-rule is a structured
-            // subtree. Extracting only its direct style children would make
-            // the replacement span delete nested conditionals (for example
-            // `@supports { details { ... } @starting-style { ... } }`).
-            // Leave mixed conditional contents grouped for a later, dedicated
-            // rule rather than risking data loss.
-            if inner_nodes
-                .iter()
-                .any(|inner| !matches!(&inner.kind, NodeKind::Style))
-            {
+            // Nested-only trees such as `@supports { @media { .home .child } }`
+            // invert as a whole under the home. Mixed trees that contain both
+            // direct styles and nested at-rules stay grouped.
+            if inner_nodes.iter().any(|inner| {
+                !matches!(inner.kind, NodeKind::Style) && !is_gatherable_conditional(inner)
+            }) {
+                continue;
+            }
+            if inner_nodes.iter().any(is_gatherable_conditional) {
+                if !conditional_tree_is_pure(source, node) {
+                    continue;
+                }
+                let mut leaves = Vec::new();
+                collect_conditional_style_leaves(source, node, &mut leaves);
+                if leaves.is_empty()
+                    || !leaves.iter().all(|leaf| {
+                        style_belongs_to_home(source, leaf, base, exact_homes, home_weight)
+                    })
+                {
+                    continue;
+                }
+                for inner in leaves {
+                    cluster.push(GatherMember::Conditional {
+                        at_node: node.clone(),
+                        inner,
+                        delete_whole_at_block: true,
+                    });
+                }
                 continue;
             }
             let style_inners: Vec<&SourceNode> = inner_nodes
@@ -3435,6 +3615,7 @@ fn collect_gather_cluster(
     }
 }
 
+#[allow(dead_code)]
 fn enclosing_container_end(
     source: &str,
     nodes: &[SourceNode],
@@ -3992,81 +4173,33 @@ fn plan_gather_related_selector_rules(
                     GatherMember::Conditional { .. } => None,
                 })
                 .collect();
-            let container_end = enclosing_container_end(source, nodes, first);
-            let (local_styles, remote_styles): (Vec<&SourceNode>, Vec<&SourceNode>) =
-                style_members.iter().copied().partition(|sec| {
-                    if let Some(limit) = container_end {
-                        sec.end <= limit
-                    } else {
-                        nodes.iter().any(|n| n.start == sec.start)
-                    }
-                });
-            let last_local = local_styles.last().copied().unwrap_or(first);
+            let uses_appended = cluster.iter().any(|member| {
+                let sel = match member {
+                    GatherMember::Style(n) => n.prelude(source).trim(),
+                    GatherMember::Conditional { inner, .. } => inner.prelude(source).trim(),
+                };
+                matches!(
+                    classify_related_nested(base, sel),
+                    Some((RelatedKind::Appended, _))
+                )
+            });
+            let gather_safety = if cluster_safe && !uses_appended {
+                Safety::Safe
+            } else {
+                Safety::Review
+            };
             let first_comment = leading_block_comment(source, first.start);
             let span_start =
                 line_start(source, first_comment.map(|(s, _)| s).unwrap_or(first.start));
-            let mut span_end = extend_with_trailing_newline(source, last_local.end);
-            for member in &cluster {
-                let GatherMember::Conditional {
-                    at_node,
-                    delete_whole_at_block,
-                    ..
-                } = member
-                else {
-                    continue;
-                };
-                if *delete_whole_at_block
-                    && at_node.start >= span_start
-                    && (container_end.is_none_or(|limit| at_node.end <= limit))
-                {
-                    span_end = span_end.max(extend_with_trailing_newline(source, at_node.end));
-                }
-            }
+            // Replace only the home rule. Remote members and owned at-blocks
+            // are separate delete plans so a gather cannot swallow unrelated
+            // SAFE nests that sit between the first and last related rule.
+            let span_end = extend_with_trailing_newline(source, first.end);
             if let Some((_, cmt)) = first_comment {
                 merged = format!("{parent_indent}{cmt}\n{merged}");
             }
 
-            let mut replacements = vec![(span_start, first.end, merged)];
-            let mut cluster_starts = HashSet::new();
-            for sec in &local_styles {
-                cluster_starts.insert(sec.start);
-            }
-            for sec in local_styles.iter().skip(1) {
-                let start = leading_block_comment(source, sec.start)
-                    .map(|(s, _)| s)
-                    .unwrap_or(sec.start);
-                let end = extend_with_trailing_newline(source, sec.end);
-                replacements.push((start, end, String::new()));
-            }
-            let mut replaced_at = HashSet::new();
-            for member in &cluster {
-                let GatherMember::Conditional {
-                    at_node,
-                    delete_whole_at_block,
-                    ..
-                } = member
-                else {
-                    continue;
-                };
-                if *delete_whole_at_block
-                    && at_node.start >= span_start
-                    && at_node.end <= span_end
-                    && replaced_at.insert(at_node.start)
-                {
-                    replacements.push((
-                        at_node.start,
-                        extend_with_trailing_newline(source, at_node.end),
-                        String::new(),
-                    ));
-                }
-            }
-            replacements.extend(leftover_style_replacements(
-                source,
-                nodes,
-                span_start,
-                span_end,
-                &cluster_starts,
-            ));
+            let replacements = vec![(span_start, first.end, merged)];
             let proposed = squeeze_excess_blank_lines(&apply_range_replacements(
                 source,
                 span_start,
@@ -4078,7 +4211,7 @@ fn plan_gather_related_selector_rules(
                 id: String::new(),
                 file: path.to_path_buf(),
                 rules: vec![RuleId::GatherRelatedSelectorRules],
-                safety: Safety::Review,
+                safety: gather_safety,
                 source_range: SourceRange {
                     start: span_start,
                     end: span_end,
@@ -4088,18 +4221,22 @@ fn plan_gather_related_selector_rules(
                 proof: Proof {
                     selector_set_equivalent: true,
                     specificity_equivalent: true,
-                    cascade_context_equivalent: false,
-                    source_order_equivalent: false,
-                    layer_equivalent: remote_styles.is_empty(),
+                    cascade_context_equivalent: !is_non_adjacent,
+                    source_order_equivalent: !is_non_adjacent,
+                    layer_equivalent: true,
                     scope_equivalent: true,
                     declarations_exact: true,
                     important_exact: true,
                 },
-                warnings: vec![format!(
-                    "Gathered {} related occurrences of '{}' across lines; review cascade ordering.",
-                    cluster.len(),
-                    base
-                )],
+                warnings: if is_non_adjacent {
+                    vec![format!(
+                        "Gathered {} related occurrences of '{}' across lines; review cascade ordering.",
+                        cluster.len(),
+                        base
+                    )]
+                } else {
+                    Vec::new()
+                },
                 reason: format!(
                     "Gather {} related rules for '{}' into the canonical first selector block.",
                     cluster.len(),
@@ -4109,7 +4246,7 @@ fn plan_gather_related_selector_rules(
             });
 
             let mut deleted_at_blocks = HashSet::new();
-            for sec in &remote_styles {
+            for sec in style_members.iter().skip(1) {
                 let start = leading_block_comment(source, sec.start)
                     .map(|(s, _)| s)
                     .unwrap_or(sec.start);
@@ -4118,7 +4255,7 @@ fn plan_gather_related_selector_rules(
                     id: String::new(),
                     file: path.to_path_buf(),
                     rules: vec![RuleId::GatherRelatedSelectorRules],
-                    safety: Safety::Review,
+                    safety: gather_safety,
                     source_range: SourceRange { start, end },
                     original: source[start..end].to_string(),
                     proposed: String::new(),
@@ -4162,7 +4299,7 @@ fn plan_gather_related_selector_rules(
                     id: String::new(),
                     file: path.to_path_buf(),
                     rules: vec![RuleId::GatherRelatedSelectorRules],
-                    safety: Safety::Review,
+                    safety: gather_safety,
                     source_range: SourceRange {
                         start: sec_start,
                         end: sec_end,
@@ -5757,7 +5894,61 @@ mod tests {
         assert_eq!(extract_base_target("> [class*='col-']"), None);
         assert_eq!(extract_base_target(":is(.prev, .next):hover"), None);
         assert_eq!(extract_base_target("&:hover"), None);
+        assert_eq!(extract_base_target("tr:last-child &"), None);
         assert_eq!(extract_base_target(".button:hover"), Some(".button"));
+    }
+
+    #[test]
+    fn nests_row_state_cells_from_the_row_not_reversed_td_amp() {
+        // Native `&` is `:is(parent)`, not a Sass parent pointer. Nesting
+        // `.archive-table tr:last-child td` under `td` as
+        // `td { tr { &:last-child & } }` matches `td tr`, which tables never have.
+        let css = r#".archive-table {
+  width: 100%;
+}
+
+.archive-table th {
+  color: gray;
+}
+
+.archive-table td {
+  padding: 1rem;
+  border-bottom: 1px solid;
+}
+
+.archive-table tr:last-child td {
+  border-bottom: none;
+}
+
+.archive-table tr:hover td {
+  background: red;
+  color: white;
+}
+"#;
+        let output = apply_until_stable(
+            Path::new("test.css"),
+            css,
+            &[
+                RuleId::NestDescendant,
+                RuleId::NestPseudoClass,
+                RuleId::NestCompound,
+                RuleId::NestAttribute,
+            ],
+            false,
+        )
+        .unwrap();
+        assert!(
+            !output.contains("&:last-child &") && !output.contains("&:hover &"),
+            "must not reverse td into &:last-child &: {output}"
+        );
+        assert!(
+            output.contains("&:last-child td") && output.contains("&:hover td"),
+            "must nest from the row: {output}"
+        );
+        assert!(
+            output.contains(".archive-table {") && output.contains("tr {"),
+            "expected .archive-table {{ tr {{ ... }} }}: {output}"
+        );
     }
 
     #[test]
@@ -6363,9 +6554,14 @@ mod tests {
 }
 "#;
         let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
-        assert_eq!(plans.len(), 1);
+        assert!(!plans.is_empty());
         let output = apply_selected_plans(css, &plans, true).unwrap();
         assert!(output.contains("font: optional;"));
+        assert_eq!(
+            output.matches(".skip-link {").count(),
+            1,
+            "expected a single gathered home: {output}"
+        );
     }
 
     #[test]
@@ -6418,12 +6614,17 @@ mod tests {
 }
 "#;
         let plans = plan(css, &[RuleId::GatherRelatedSelectorRules]);
-        assert_eq!(plans.len(), 1);
+        assert!(!plans.is_empty());
         let output = apply_selected_plans(css, &plans, true).unwrap();
         assert!(output.contains("font: optional;"));
         assert!(output.contains("+ * {"));
         assert!(output.contains("&::backdrop {"));
         assert!(output.contains("&:has(*) {"));
+        assert_eq!(
+            output.matches(".skip-link {").count(),
+            1,
+            "expected a single gathered home: {output}"
+        );
     }
 
     #[test]
@@ -7120,6 +7321,149 @@ mod tests {
             plans.is_empty(),
             ".mycard must not nest under .card: {:?}",
             plans.iter().map(|p| &p.proposed).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn gathers_stack_card_supports_media_into_home_without_reversed_amp() {
+        let css = r#".stack-card {
+    position: sticky;
+    margin-bottom: 75px;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+}
+
+@supports (animation-timeline:view()) {
+    @media (prefers-reduced-motion:no-preference) {
+        .stack-card .card-inner {
+            animation-name: recede;
+            animation-timeline: --stack;
+        }
+
+        .stack-card:last-child .card-inner {
+            animation: none;
+        }
+    }
+}
+
+.stack-card {
+    &:hover .project-card-marvel__media img {
+        transform: scale(1.035);
+    }
+
+    &:hover .project-card-marvel__media::after {
+        left: 160%;
+    }
+}
+"#;
+        let rules = [
+            RuleId::NestPseudoClass,
+            RuleId::NestCompound,
+            RuleId::NestDescendant,
+            RuleId::NestSupports,
+            RuleId::NestMedia,
+            RuleId::GatherRelatedSelectorRules,
+        ];
+        let output = apply_until_stable(Path::new("test.css"), css, &rules, false).unwrap();
+        let home = output.find(".stack-card {").unwrap_or_else(|| {
+            panic!("home missing: {output}");
+        });
+        let supports = output
+            .find("@supports (animation-timeline:view())")
+            .unwrap_or_else(|| {
+                panic!("supports missing: {output}");
+            });
+        assert!(
+            supports > home,
+            "supports must invert under .stack-card: {output}"
+        );
+        assert!(
+            !output.contains("@supports (animation-timeline:view()) {\n    .stack-card")
+                && !output.contains("@supports (animation-timeline:view()) {\n        .stack-card"),
+            "must not wrap a second .stack-card inside @supports: {output}"
+        );
+        assert!(
+            !output.contains("&:last-child &"),
+            "must not reverse .card-inner into &:last-child &: {output}"
+        );
+        assert!(
+            output.contains("&:last-child .card-inner")
+                || (output.contains("&:last-child") && output.contains("animation: none")),
+            "last-child card-inner must stay at .stack-card scope: {output}"
+        );
+        assert!(
+            output.contains("animation-name: recede") && output.contains("animation: none"),
+            "view-timeline animation must survive: {output}"
+        );
+        assert!(
+            output.contains("transform: scale(1.035)") && output.contains("left: 160%"),
+            "hover media rules must survive: {output}"
+        );
+        assert!(
+            output.matches(".stack-card {").count() == 1,
+            "expected a single .stack-card home: {output}"
+        );
+    }
+
+    #[test]
+    fn review_gather_span_does_not_hide_unrelated_safe_nests() {
+        // Non-adjacent gather emits a REVIEW plan whose source_range covers
+        // intervening unrelated rules. Those rules must still nest when review
+        // is not applied (TUI / apply_until_stable default).
+        let css = r#".stack-card:hover .media {
+  opacity: 1;
+}
+
+.terminal-line {
+  display: flex;
+}
+
+.terminal-line .prompt {
+  color: red;
+}
+
+.terminal-line.dim {
+  opacity: 0.5;
+}
+
+.stack-card {
+  position: sticky;
+}
+
+.stack-card:last-child {
+  margin-bottom: 0;
+}
+"#;
+        let rules = [
+            RuleId::NestPseudoClass,
+            RuleId::NestCompound,
+            RuleId::NestDescendant,
+            RuleId::GatherRelatedSelectorRules,
+        ];
+        let plans = plan(css, &rules);
+        assert!(
+            plans.iter().any(|p| {
+                p.safety == Safety::Safe
+                    && p.proposed.contains(".terminal-line")
+                    && (p.proposed.contains(".prompt") || p.proposed.contains("&.dim"))
+            }),
+            "safe terminal-line nest must survive overlapping review gather: {:?}",
+            plans
+                .iter()
+                .map(|p| (&p.safety, &p.reason, &p.proposed))
+                .collect::<Vec<_>>()
+        );
+
+        let output = apply_until_stable(Path::new("test.css"), css, &rules, false).unwrap();
+        assert!(
+            output.contains(".terminal-line {") && output.contains(".prompt {"),
+            "apply without review must nest adjacent descendants: {output}"
+        );
+        assert!(
+            output.contains(".stack-card {") && output.contains("&:last-child {"),
+            "apply without review must nest adjacent pseudo-class: {output}"
         );
     }
 
