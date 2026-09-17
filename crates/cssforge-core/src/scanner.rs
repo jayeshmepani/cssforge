@@ -363,6 +363,104 @@ pub fn top_level_declarations(body: &str) -> Vec<(String, String)> {
     declarations
 }
 
+/// Like [`top_level_declarations`], but also returns the raw span of each
+/// declaration inside `body` (from the first non-trivia character through the
+/// terminating `;`, or through the end of `body` when the semicolon is omitted).
+pub fn top_level_declaration_spans(body: &str) -> Vec<(Range<usize>, String, String)> {
+    let bytes = body.as_bytes();
+    let mut declarations = Vec::new();
+    let mut i = 0usize;
+    let mut segment_start = 0usize;
+    let mut braces = 0usize;
+    let mut parens = 0usize;
+    let mut brackets = 0usize;
+    let mut quote: Option<u8> = None;
+    let mut escaped = false;
+    let mut segment_has_colon = false;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+            i = skip_comment(body, i, bytes.len());
+            continue;
+        }
+        match b {
+            b'\'' | b'"' => quote = Some(b),
+            b'(' => parens += 1,
+            b')' => parens = parens.saturating_sub(1),
+            b'[' => brackets += 1,
+            b']' => brackets = brackets.saturating_sub(1),
+            b':' if braces == 0 && parens == 0 && brackets == 0 => segment_has_colon = true,
+            b'{' if parens == 0 && brackets == 0 => {
+                if braces == 0 {
+                    segment_start = i + 1;
+                    segment_has_colon = false;
+                }
+                braces += 1;
+            }
+            b'}' if parens == 0 && brackets == 0 => {
+                braces = braces.saturating_sub(1);
+                if braces == 0 {
+                    segment_start = i + 1;
+                    segment_has_colon = false;
+                }
+            }
+            b';' if braces == 0 && parens == 0 && brackets == 0 => {
+                if segment_has_colon {
+                    push_decl_span(body, segment_start, i + 1, &mut declarations);
+                }
+                segment_start = i + 1;
+                segment_has_colon = false;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+
+    if braces == 0 && segment_has_colon {
+        push_decl_span(body, segment_start, body.len(), &mut declarations);
+    }
+
+    declarations
+}
+
+fn push_decl_span(
+    body: &str,
+    segment_start: usize,
+    segment_end: usize,
+    out: &mut Vec<(Range<usize>, String, String)>,
+) {
+    let raw = &body[segment_start..segment_end];
+    let Some(rel) = raw.find(|c: char| !c.is_whitespace()) else {
+        return;
+    };
+    let start = segment_start + rel;
+    let text = body[start..segment_end].trim_end();
+    if text.is_empty() {
+        return;
+    }
+    let Some((property, value)) = text.split_once(':') else {
+        return;
+    };
+    let end = start + text.len();
+    out.push((
+        start..end,
+        property.trim().to_string(),
+        value.trim().trim_end_matches(';').trim().to_string(),
+    ));
+}
+
 pub fn count_ascii_case_insensitive_outside_comments(source: &str, needle: &str) -> usize {
     let lower_needle = needle.to_ascii_lowercase();
     let bytes = source.as_bytes();

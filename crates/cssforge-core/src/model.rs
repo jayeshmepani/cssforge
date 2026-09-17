@@ -67,12 +67,13 @@ pub enum RuleId {
     MergeIdenticalRuleBodies,
     FactorIdenticalStatesWithIs,
     GatherRelatedSelectorRules,
+    DedupeIdenticalDeclarations,
     NestLayerBySelector,
     PruneOverriddenDeclarations,
 }
 
 impl RuleId {
-    pub const ALL: [RuleId; 27] = [
+    pub const ALL: [RuleId; 28] = [
         RuleId::NestPseudoClass,
         RuleId::NestPseudoElement,
         RuleId::NestAttribute,
@@ -98,6 +99,7 @@ impl RuleId {
         RuleId::MergeIdenticalRuleBodies,
         RuleId::FactorIdenticalStatesWithIs,
         RuleId::GatherRelatedSelectorRules,
+        RuleId::DedupeIdenticalDeclarations,
         RuleId::NestLayerBySelector,
         RuleId::PruneOverriddenDeclarations,
     ];
@@ -129,6 +131,7 @@ impl RuleId {
             Self::MergeIdenticalRuleBodies => "merge-identical-rule-bodies",
             Self::FactorIdenticalStatesWithIs => "factor-identical-states-with-is",
             Self::GatherRelatedSelectorRules => "gather-related-selector-rules",
+            Self::DedupeIdenticalDeclarations => "dedupe-identical-declarations",
             Self::NestLayerBySelector => "nest-layer-by-selector",
             Self::PruneOverriddenDeclarations => "prune-overridden-declarations",
         }
@@ -372,6 +375,14 @@ pub fn rule_definitions() -> Vec<RuleDefinition> {
             description: "Gather scattered related rules into the strongest existing parent within the same cascade layer (specificity wins; prefix nest beats appended `&` on a tie). Busy @media/@supports blocks with mixed selectors stay grouped. Does not move declarations between named layers.",
         },
         RuleDefinition {
+            id: RuleId::DedupeIdenticalDeclarations,
+            section: RuleSection::Refactor,
+            title: "Dedupe identical declarations",
+            category: "Structural Refactoring",
+            safety_level: SafetyLevel::ProvenLocalRefactor,
+            description: "Remove exact-duplicate declarations and identical nested rule copies in the same block, keeping the first occurrence. Different values are left untouched so cascade order does not drift.",
+        },
+        RuleDefinition {
             id: RuleId::NestLayerBySelector,
             section: RuleSection::Refactor,
             title: "Nest named layers under a shared selector",
@@ -444,6 +455,7 @@ impl Preset {
                 RuleId::MergeAdjacentIdenticalSelector,
                 RuleId::MergeIdenticalRuleBodies,
                 RuleId::FactorIdenticalStatesWithIs,
+                RuleId::DedupeIdenticalDeclarations,
             ],
             Self::Modern => vec![
                 RuleId::NestPseudoClass,
@@ -460,6 +472,7 @@ impl Preset {
                 RuleId::ConsolidateNot,
                 RuleId::ModernizeIs,
                 RuleId::ModernizeMediaRange,
+                RuleId::DedupeIdenticalDeclarations,
                 RuleId::PruneOverriddenDeclarations,
             ],
             Self::Refactor => vec![
@@ -487,6 +500,7 @@ impl Preset {
                 RuleId::MergeIdenticalRuleBodies,
                 RuleId::FactorIdenticalStatesWithIs,
                 RuleId::GatherRelatedSelectorRules,
+                RuleId::DedupeIdenticalDeclarations,
                 RuleId::NestLayerBySelector,
                 RuleId::PruneOverriddenDeclarations,
             ],

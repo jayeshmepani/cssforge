@@ -5,7 +5,8 @@ use crate::{
     },
     scanner::{
         NodeKind, SourceNode, count_ascii_case_insensitive_outside_comments,
-        count_top_level_declarations, is_whitespace_only, scan_nodes, top_level_declarations,
+        count_top_level_declarations, is_whitespace_only, scan_nodes, top_level_declaration_spans,
+        top_level_declarations,
     },
 };
 use anyhow::{Context, Result};
@@ -691,6 +692,7 @@ fn build_plans(
     plan_gather_consecutive_conditions_by_selector(path, source, nodes, &enabled, &mut plans);
     plan_merge_adjacent_identical_selectors(path, source, nodes, &enabled, &mut plans);
     plan_gather_related_selector_rules(path, source, nodes, &enabled, &mut plans);
+    plan_dedupe_identical_declarations(path, source, nodes, &enabled, &mut plans);
     plan_nest_layer_by_selector(path, source, nodes, &enabled, &mut plans);
     plan_merge_identical_rule_bodies(path, source, nodes, &enabled, &mut plans);
     plan_factor_identical_states_with_is(path, source, nodes, &enabled, &mut plans);
@@ -2212,7 +2214,10 @@ fn inverted_conditional_body_lines(
         }
     }
 
-    let nested = factor_related_nested_rules(merge_same_prelude_nests(nested));
+    let direct_decls = dedupe_declaration_strings(direct_decls);
+    let nested = dedupe_nested_rule_strings(factor_related_nested_rules(merge_same_prelude_nests(
+        nested,
+    )));
     let mut lines = Vec::new();
     for d in &direct_decls {
         lines.push(format!("{inner_indent}{}", ensure_semicolon(d)));
@@ -3181,8 +3186,13 @@ fn format_merged_rule(
         }
     }
 
-    let all_nested_rules = factor_related_nested_rules(merge_same_prelude_nests(all_nested_rules));
-    let absorbed_nests = factor_related_nested_rules(merge_same_prelude_nests(absorbed_nests));
+    let all_decls = dedupe_declaration_strings(all_decls);
+    let all_nested_rules = dedupe_nested_rule_strings(factor_related_nested_rules(
+        merge_same_prelude_nests(all_nested_rules),
+    ));
+    let absorbed_nests = dedupe_nested_rule_strings(factor_related_nested_rules(
+        merge_same_prelude_nests(absorbed_nests),
+    ));
 
     let mut body_lines = Vec::new();
 
@@ -4069,6 +4079,274 @@ fn plan_nest_layer_by_selector(
     }
 }
 
+fn collapse_css_ws(s: &str) -> String {
+    let mut out = String::new();
+    let mut prev_space = false;
+    for c in s.chars() {
+        if c.is_whitespace() {
+            if !prev_space && !out.is_empty() {
+                out.push(' ');
+            }
+            prev_space = true;
+        } else {
+            prev_space = false;
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn split_important_flag(value: &str) -> (String, bool) {
+    let trimmed = value.trim();
+    let bytes = trimmed.as_bytes();
+    if bytes.len() >= 10 && bytes[bytes.len() - 10..].eq_ignore_ascii_case(b"!important") {
+        (trimmed[..trimmed.len() - 10].trim().to_string(), true)
+    } else {
+        (trimmed.to_string(), false)
+    }
+}
+
+fn declaration_dup_key(property: &str, value: &str) -> (String, String, bool) {
+    let prop = if property.starts_with("--") {
+        property.to_string()
+    } else {
+        property.to_ascii_lowercase()
+    };
+    let (value, important) = split_important_flag(value);
+    (prop, collapse_css_ws(&value), important)
+}
+
+fn declaration_string_dup_key(decl: &str) -> Option<(String, String, bool)> {
+    let text = decl.trim().trim_end_matches(';').trim();
+    let (property, value) = text.split_once(':')?;
+    let property = property.trim();
+    let value = value.trim();
+    if property.is_empty() || value.is_empty() {
+        return None;
+    }
+    Some(declaration_dup_key(property, value))
+}
+
+fn normalize_block_text(s: &str) -> String {
+    s.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn nested_rule_dup_key(nr: &str) -> Option<(String, String)> {
+    let prelude = nested_rule_prelude(nr)?;
+    let inner = nested_rule_inner(nr);
+    Some((collapse_css_ws(prelude), normalize_block_text(&inner)))
+}
+
+fn dedupe_declaration_strings(decls: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for decl in decls {
+        if let Some(key) = declaration_string_dup_key(&decl)
+            && !seen.insert(key)
+        {
+            continue;
+        }
+        out.push(decl);
+    }
+    out
+}
+
+fn dedupe_nested_rule_strings(rules: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for nr in rules {
+        let cleaned = dedupe_inside_nested_rule(&nr);
+        if let Some(key) = nested_rule_dup_key(&cleaned)
+            && !seen.insert(key)
+        {
+            continue;
+        }
+        out.push(cleaned);
+    }
+    out
+}
+
+fn dedupe_inside_nested_rule(nr: &str) -> String {
+    let Some(prelude) = nested_rule_prelude(nr).map(str::to_string) else {
+        return nr.to_string();
+    };
+    let prefix = nested_rule_comment_prefix(nr);
+    let inner = nested_rule_inner(nr);
+    if inner.trim().is_empty() {
+        return nr.to_string();
+    }
+    let (orig_decls, orig_nested) = parse_rule_body_items(&inner);
+    let decls = dedupe_declaration_strings(orig_decls.clone());
+    let nested = dedupe_nested_rule_strings(orig_nested.clone());
+    if decls == orig_decls && nested == orig_nested {
+        return nr.to_string();
+    }
+
+    let mut inner_lines = Vec::new();
+    for d in &decls {
+        inner_lines.push(format!("    {}", ensure_semicolon(d)));
+    }
+    if !decls.is_empty() && !nested.is_empty() {
+        inner_lines.push(String::new());
+    }
+    for (idx, nested_nr) in nested.iter().enumerate() {
+        for line in nested_nr.lines() {
+            if line.trim().is_empty() {
+                inner_lines.push(String::new());
+            } else if line.starts_with(' ') || line.starts_with('\t') {
+                inner_lines.push(line.to_string());
+            } else {
+                inner_lines.push(format!("    {line}"));
+            }
+        }
+        if idx + 1 < nested.len() {
+            inner_lines.push(String::new());
+        }
+    }
+    let head = if prefix.is_empty() {
+        String::new()
+    } else {
+        format!("{prefix}\n")
+    };
+    format!("{head}{prelude} {{\n{}\n}}", inner_lines.join("\n"))
+}
+
+fn gather_member_already_inside_home(member: &GatherMember, home: &SourceNode) -> bool {
+    let (start, end) = match member {
+        GatherMember::Style(n) => (n.start, n.end),
+        GatherMember::Conditional { inner, .. } => (inner.start, inner.end),
+    };
+    start >= home.start && end <= home.end && start != home.start
+}
+
+fn extend_span_through_trailing_line_end(source: &str, mut end: usize) -> usize {
+    let bytes = source.as_bytes();
+    while end < bytes.len() && (bytes[end] == b' ' || bytes[end] == b'\t') {
+        end += 1;
+    }
+    if end + 1 < bytes.len() && bytes[end] == b'\r' && bytes[end + 1] == b'\n' {
+        end + 2
+    } else if end < bytes.len() && bytes[end] == b'\n' {
+        end + 1
+    } else {
+        end
+    }
+}
+
+fn plan_dedupe_identical_declarations(
+    path: &Path,
+    source: &str,
+    nodes: &[SourceNode],
+    enabled: &HashSet<RuleId>,
+    plans: &mut Vec<PlanEntry>,
+) {
+    if !enabled.contains(&RuleId::DedupeIdenticalDeclarations) {
+        return;
+    }
+
+    for node in nodes {
+        if !matches!(&node.kind, NodeKind::Style) {
+            continue;
+        }
+        let Some(body_range) = node.body_range.clone() else {
+            continue;
+        };
+        let body = &source[body_range.clone()];
+        let mut deletes: Vec<(usize, usize, String)> = Vec::new();
+        let mut dropped = 0usize;
+
+        let mut seen_decls = HashSet::new();
+        for (rel, prop, value) in top_level_declaration_spans(body) {
+            let key = declaration_dup_key(&prop, &value);
+            if !seen_decls.insert(key) {
+                let mut start = body_range.start + rel.start;
+                let line_start = source[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+                if source[line_start..start]
+                    .chars()
+                    .all(|c| c == ' ' || c == '\t')
+                {
+                    start = line_start;
+                }
+                let end = extend_span_through_trailing_line_end(source, body_range.start + rel.end);
+                deletes.push((start, end, String::new()));
+                dropped += 1;
+            }
+        }
+
+        let mut seen_nests = HashSet::new();
+        for inner in scan_nodes(source, body_range.clone()) {
+            let prelude = collapse_css_ws(inner.prelude(source));
+            let inner_body = inner.body(source).unwrap_or("");
+            let key = (prelude, normalize_block_text(inner_body));
+            if key.0.is_empty() {
+                continue;
+            }
+            if !seen_nests.insert(key) {
+                let mut start = inner.start;
+                let line_start = source[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+                if source[line_start..start]
+                    .chars()
+                    .all(|c| c == ' ' || c == '\t')
+                {
+                    start = line_start;
+                }
+                let end = extend_with_trailing_newline(source, inner.end);
+                deletes.push((start, end, String::new()));
+                dropped += 1;
+            }
+        }
+
+        if deletes.is_empty() {
+            continue;
+        }
+
+        let proposed_body = squeeze_excess_blank_lines(&apply_range_replacements(
+            source,
+            body_range.start,
+            body_range.end,
+            &deletes,
+        ));
+        if proposed_body == body {
+            continue;
+        }
+
+        let proposed = format!(
+            "{}{}{}",
+            &source[node.start..body_range.start],
+            proposed_body,
+            &source[body_range.end..node.end]
+        );
+        let original = source[node.start..node.end].to_string();
+        if proposed == original {
+            continue;
+        }
+
+        let selector = node.prelude(source).trim();
+        plans.push(PlanEntry {
+            id: String::new(),
+            file: path.to_path_buf(),
+            rules: vec![RuleId::DedupeIdenticalDeclarations],
+            safety: Safety::Safe,
+            source_range: SourceRange {
+                start: node.start,
+                end: node.end,
+            },
+            original,
+            proposed,
+            proof: Proof::safe_local(),
+            warnings: Vec::new(),
+            reason: format!(
+                "Remove {dropped} exact-duplicate declaration(s) or nested rule(s) in '{selector}'."
+            ),
+            selected: true,
+        });
+    }
+}
+
 fn plan_gather_related_selector_rules(
     path: &Path,
     source: &str,
@@ -4119,6 +4397,15 @@ fn plan_gather_related_selector_rules(
             &grouped_at_blocks,
             &mut cluster,
         );
+
+        if cluster.len() > 1
+            && let Some(home) = cluster.iter().find_map(|m| match m {
+                GatherMember::Style(n) => Some(n.clone()),
+                GatherMember::Conditional { .. } => None,
+            })
+        {
+            cluster.retain(|m| !gather_member_already_inside_home(m, &home));
+        }
 
         if cluster.len() > 1 {
             let mut is_non_adjacent = false;
@@ -4206,6 +4493,9 @@ fn plan_gather_related_selector_rules(
                 span_end,
                 &replacements,
             ));
+            if proposed == source[span_start..span_end] {
+                continue;
+            }
 
             plans.push(PlanEntry {
                 id: String::new(),
@@ -7909,6 +8199,111 @@ mod tests {
         assert!(
             output.contains("display: flex") && output.contains("color: red"),
             "button rules must survive:\n{output}"
+        );
+    }
+
+    #[test]
+    fn dedupes_identical_declarations_and_keeps_distinct_values() {
+        let css = ".card {
+  color: red;
+  color: red;
+  display: none;
+  display: none;
+  color: blue;
+}
+";
+        let plans = plan(css, &[RuleId::DedupeIdenticalDeclarations]);
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].safety, Safety::Safe);
+        let output = apply_selected_plans(css, &plans, false).unwrap();
+        assert_eq!(
+            output,
+            ".card {
+  color: red;
+  display: none;
+  color: blue;
+}
+"
+        );
+    }
+
+    #[test]
+    fn dedupe_does_not_drop_important_or_custom_property_variants() {
+        let css = ".card {
+  color: red;
+  color: red !important;
+  --token: 1;
+  --token: 2;
+  --Token: 1;
+}
+";
+        let plans = plan(css, &[RuleId::DedupeIdenticalDeclarations]);
+        assert!(
+            plans.is_empty(),
+            "must not treat distinct cascade values as duplicates: {:?}",
+            plans.iter().map(|p| &p.proposed).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn dedupes_identical_nested_rule_copies() {
+        let css = ".card {
+  & > .x {
+    display: none;
+  }
+  & > .x {
+    display: none;
+  }
+}
+";
+        let output = apply_until_stable(
+            Path::new("test.css"),
+            css,
+            &[RuleId::DedupeIdenticalDeclarations],
+            false,
+        )
+        .unwrap();
+        assert_eq!(output.matches("& > .x").count(), 1, "{output}");
+        assert_eq!(output.matches("display: none").count(), 1, "{output}");
+    }
+
+    #[test]
+    fn gather_plus_dedupe_does_not_clone_already_nested_descendants() {
+        let css = r#"@media (width <=960px) {
+  .project-card-marvel__body {
+    display: contents;
+  }
+  .project-card-marvel__body > .stack:first-child {
+    display: contents;
+  }
+  .project-card-marvel__body > .stack:first-child > .cluster {
+    display: none;
+  }
+  .project-card-marvel__body > .stack:not(:first-child) > :not(.cluster) {
+    display: none;
+  }
+  .project-card-marvel__body > .stack:not(:first-child) > .cluster ~ .cluster {
+    display: none;
+  }
+}
+"#;
+        let rules = [
+            RuleId::NestDescendant,
+            RuleId::NestCombinator,
+            RuleId::GatherRelatedSelectorRules,
+            RuleId::DedupeIdenticalDeclarations,
+        ];
+        let output = apply_until_stable(Path::new("test.css"), css, &rules, false).unwrap();
+        assert_eq!(
+            output.matches("display: none").count(),
+            3,
+            "each hide rule must appear once:\n{output}"
+        );
+        assert_eq!(
+            output.matches("& > .cluster").count()
+                + output.matches(".stack:first-child > .cluster").count(),
+            1,
+            "cluster nest must not be cloned:\n{output}"
         );
     }
 }
