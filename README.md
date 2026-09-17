@@ -37,20 +37,20 @@ Download from [GitHub Releases](https://github.com/jayeshmepani/cssforge/release
 #### 🐧 Linux (x64 / ARM64)
 ```bash
 # Extract and copy to local user bin (no sudo needed):
-tar -xzf cssforge-v0.6.0-linux-x64.tar.gz
-cp cssforge-v0.6.0-linux-x64/cssforge ~/.local/bin/
+tar -xzf cssforge-v0.6.1-linux-x64.tar.gz
+cp cssforge-v0.6.1-linux-x64/cssforge ~/.local/bin/
 chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🍏 macOS (Apple Silicon M-Series)
 ```bash
-tar -xzf cssforge-v0.6.0-macos-arm64.tar.gz
-cp cssforge-v0.6.0-macos-arm64/cssforge ~/.local/bin/
+tar -xzf cssforge-v0.6.1-macos-arm64.tar.gz
+cp cssforge-v0.6.1-macos-arm64/cssforge ~/.local/bin/
 chmod +x ~/.local/bin/cssforge
 ```
 
 #### 🪟 Windows (x64 / ARM64 Snapdragon)
-Extract `cssforge.exe` from `cssforge-v0.6.0-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
+Extract `cssforge.exe` from `cssforge-v0.6.1-windows-x64.zip` and move it to any directory in your system `Path` (e.g. `C:\Windows\System32` or your tools folder).
 
 ---
 
@@ -141,6 +141,7 @@ cssforge rules
 * **Deduplication & Pruning**: `merge-adjacent-identical-selector`, `merge-identical-rule-bodies`, `factor-identical-states-with-is`, `gather-related-selector-rules`, `dedupe-identical-declarations`, `prune-overridden-declarations`.
 * **27th — Nest layers under a selector**: `nest-layer-by-selector` factors the exact same selector living in multiple named `@layer` blocks into `.sel { @layer a { … } @layer b { … } }`. Layer identity and first-declared layer order are preserved. It never nests `@layer` inside another `@layer` (that would create a child layer such as `tokens.base`). Gather stays inside one layer; this rule is the safe cross-layer counterpart.
 * **28th — Dedupe identical declarations**: `dedupe-identical-declarations` removes exact-duplicate declarations and identical nested rule copies in the same block, keeping the first occurrence. Different values (including `!important` vs not) are left untouched so cascade order does not drift. Gather applies the same cleanup when it merges related rules, so it cannot clone already-nested descendants.
+* **0.6.1 patch**: Multiline values (`filter: drop-shadow(…)`, `linear-gradient(…)`) stay one declaration; gather no longer drops parent decls from mixed `@media`; identical selectors with conflicting property values are not concatenated.
 
 For complete interactive visual examples of each rule, visit the [Documentation Site](https://jayeshmepani.github.io/cssforge/).
 

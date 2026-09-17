@@ -805,14 +805,11 @@ fn build_plans(
                                 extra_rendered.push_str(nested_selector.trim());
                                 extra_rendered.push_str(" {\n");
                                 if let Some(ch_body_range) = &ch_node.body_range {
-                                    for line in source[ch_body_range.clone()].lines() {
-                                        let trimmed = line.trim();
-                                        if !trimmed.is_empty() {
-                                            extra_rendered.push_str(&inner_decl_indent);
-                                            extra_rendered.push_str(&ensure_semicolon(trimmed));
-                                            extra_rendered.push('\n');
-                                        }
-                                    }
+                                    append_reindented_css_fragment(
+                                        &mut extra_rendered,
+                                        &source[ch_body_range.clone()],
+                                        &inner_decl_indent,
+                                    );
                                 }
                                 extra_rendered.push_str(&nested_indent);
                                 extra_rendered.push_str("}\n");
@@ -1069,14 +1066,11 @@ fn plan_merge_same_named_layers(
                             .unwrap_or_else(|_| body_text.to_string())
                     };
 
-                    for line in modernized_body.lines() {
-                        let trimmed = line.trim();
-                        if !trimmed.is_empty() {
-                            merged_body.push_str(&nested_indent);
-                            merged_body.push_str(&ensure_semicolon(trimmed));
-                            merged_body.push('\n');
-                        }
-                    }
+                    append_reindented_css_fragment(
+                        &mut merged_body,
+                        &modernized_body,
+                        &nested_indent,
+                    );
                 }
             }
 
@@ -1192,14 +1186,7 @@ fn plan_merge_adjacent_at_blocks(
                 for c in &cluster {
                     if let Some(body_range) = &c.body_range {
                         let body_text = &source[body_range.clone()];
-                        for line in body_text.lines() {
-                            let trimmed = line.trim();
-                            if !trimmed.is_empty() {
-                                merged_body.push_str(&nested_indent);
-                                merged_body.push_str(&ensure_semicolon(trimmed));
-                                merged_body.push('\n');
-                            }
-                        }
+                        append_reindented_css_fragment(&mut merged_body, body_text, &nested_indent);
                     }
                 }
 
@@ -1298,14 +1285,11 @@ fn plan_gather_consecutive_conditions_by_selector(
                     let inner_nodes = scan_nodes(source, c_body_range.clone());
                     for in_node in &inner_nodes {
                         if let Some(in_body_range) = &in_node.body_range {
-                            for line in source[in_body_range.clone()].lines() {
-                                let trimmed = line.trim();
-                                if !trimmed.is_empty() {
-                                    body_out.push_str(&inner_decl_indent);
-                                    body_out.push_str(&ensure_semicolon(trimmed));
-                                    body_out.push('\n');
-                                }
-                            }
+                            append_reindented_css_fragment(
+                                &mut body_out,
+                                &source[in_body_range.clone()],
+                                &inner_decl_indent,
+                            );
                         }
                     }
 
@@ -1424,14 +1408,11 @@ fn plan_nest_in_place_adjacent_states(
                         out.push_str(" {\n");
 
                         if let Some(c_body_range) = &c.body_range {
-                            for line in source[c_body_range.clone()].lines() {
-                                let trimmed = line.trim();
-                                if !trimmed.is_empty() {
-                                    out.push_str(&inner_decl_indent);
-                                    out.push_str(&ensure_semicolon(trimmed));
-                                    out.push('\n');
-                                }
-                            }
+                            append_reindented_css_fragment(
+                                &mut out,
+                                &source[c_body_range.clone()],
+                                &inner_decl_indent,
+                            );
                         }
 
                         out.push_str(&nested_indent);
@@ -1507,6 +1488,10 @@ fn parse_rule_body_items(body_str: &str) -> (Vec<String>, Vec<String>) {
     let mut nested_rules = Vec::new();
 
     let mut depth = 0usize;
+    let mut parens = 0usize;
+    let mut brackets = 0usize;
+    let mut quote: Option<u8> = None;
+    let mut escaped = false;
     let mut current_block = String::new();
     let mut current_decl = String::new();
     let mut in_comment = false;
@@ -1528,7 +1513,7 @@ fn parse_rule_body_items(body_str: &str) -> (Vec<String>, Vec<String>) {
             continue;
         }
 
-        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+        if quote.is_none() && bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
             in_comment = true;
             current_decl.push('/');
             current_decl.push('*');
@@ -1539,7 +1524,44 @@ fn parse_rule_body_items(body_str: &str) -> (Vec<String>, Vec<String>) {
         }
 
         let b = bytes[i];
-        if b == b'{' {
+        if let Some(q) = quote {
+            current_decl.push(b as char);
+            if depth > 0 {
+                current_block.push(b as char);
+            }
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+
+        if b == b'\'' || b == b'"' {
+            quote = Some(b);
+            if depth > 0 {
+                current_block.push(b as char);
+            } else {
+                current_decl.push(b as char);
+            }
+            i += 1;
+            continue;
+        }
+
+        if b == b'(' {
+            parens += 1;
+        } else if b == b')' {
+            parens = parens.saturating_sub(1);
+        } else if b == b'[' {
+            brackets += 1;
+        } else if b == b']' {
+            brackets = brackets.saturating_sub(1);
+        }
+
+        if b == b'{' && parens == 0 && brackets == 0 {
             depth += 1;
             if depth == 1 {
                 current_block = current_decl.clone();
@@ -1548,7 +1570,7 @@ fn parse_rule_body_items(body_str: &str) -> (Vec<String>, Vec<String>) {
             current_block.push('{');
             i += 1;
             continue;
-        } else if b == b'}' {
+        } else if b == b'}' && parens == 0 && brackets == 0 {
             if depth > 0 {
                 depth -= 1;
                 current_block.push('}');
@@ -1567,36 +1589,38 @@ fn parse_rule_body_items(body_str: &str) -> (Vec<String>, Vec<String>) {
 
         if depth > 0 {
             current_block.push(b as char);
-        } else {
-            if b == b';' {
-                current_decl.push(';');
-                let trimmed = current_decl.trim().to_string();
-                if !trimmed.is_empty() {
-                    declarations.push(trimmed);
-                }
-                current_decl.clear();
-            } else if b == b'\n' {
-                let trimmed = current_decl.trim();
-                // Selector-list continuations (`&:hover,` / `&::before,`) contain `:`
-                // but are not declarations — they must stay attached to the `{` that follows.
-                if !trimmed.is_empty()
-                    && trimmed.contains(':')
-                    && !trimmed.ends_with('{')
-                    && !trimmed.ends_with(',')
-                {
-                    let rest = body_str[i + 1..].trim_start();
-                    if !rest.starts_with('{') {
-                        declarations.push(trimmed.to_string());
-                        current_decl.clear();
-                    } else {
-                        current_decl.push('\n');
-                    }
+        } else if b == b';' && parens == 0 && brackets == 0 {
+            current_decl.push(';');
+            let trimmed = current_decl.trim().to_string();
+            if !trimmed.is_empty() {
+                declarations.push(trimmed);
+            }
+            current_decl.clear();
+        } else if b == b'\n' && parens == 0 && brackets == 0 {
+            let trimmed = current_decl.trim();
+            // Selector-list continuations (`&:hover,` / `&::before,`) contain `:`
+            // but are not declarations — they must stay attached to the `{` that follows.
+            // Multiline values (`filter: drop-shadow()\n drop-shadow()`,
+            // `background: linear-gradient(\n  …)`) must also stay intact.
+            if !trimmed.is_empty()
+                && trimmed.contains(':')
+                && !trimmed.ends_with('{')
+                && !trimmed.ends_with(',')
+                && !trimmed.ends_with('(')
+                && !trimmed.ends_with(':')
+            {
+                let rest = body_str[i + 1..].trim_start();
+                if !rest.starts_with('{') && !looks_like_css_value_continuation(rest) {
+                    declarations.push(trimmed.to_string());
+                    current_decl.clear();
                 } else {
                     current_decl.push('\n');
                 }
             } else {
-                current_decl.push(b as char);
+                current_decl.push('\n');
             }
+        } else {
+            current_decl.push(b as char);
         }
         i += 1;
     }
@@ -1607,6 +1631,148 @@ fn parse_rule_body_items(body_str: &str) -> (Vec<String>, Vec<String>) {
     }
 
     (declarations, nested_rules)
+}
+
+fn looks_like_css_value_continuation(rest: &str) -> bool {
+    let t = rest.trim_start();
+    if t.is_empty() {
+        return false;
+    }
+    let bytes = t.as_bytes();
+    match bytes[0] {
+        b',' | b')' | b'/' | b'*' | b'%' | b'+' => return true,
+        b'0'..=b'9' => return true,
+        b'.' if bytes.get(1).is_some_and(u8::is_ascii_digit) => return true,
+        b'-' if bytes
+            .get(1)
+            .is_some_and(|d| d.is_ascii_digit() || *d == b'.') =>
+        {
+            return true;
+        }
+        b'#' => {
+            let hex_len = t[1..]
+                .chars()
+                .take_while(|ch| ch.is_ascii_hexdigit())
+                .count();
+            if matches!(hex_len, 3 | 4 | 6 | 8) {
+                let after = t[1 + hex_len..].trim_start();
+                if !after.starts_with('{') {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+    if let Some(paren) = t.find('(') {
+        let head = t[..paren].trim();
+        if !head.is_empty()
+            && !head.contains(':')
+            && !head.contains([' ', '\t', '{', '}'])
+            && head.chars().all(|ch| is_ident_continue(ch) || ch == '-')
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn bump_css_grouping_depth(s: &str, parens: &mut i32, brackets: &mut i32) {
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    let mut quote: Option<u8> = None;
+    let mut escaped = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = i.saturating_add(2);
+            continue;
+        }
+        match b {
+            b'\'' | b'"' => quote = Some(b),
+            b'(' => *parens += 1,
+            b')' => *parens -= 1,
+            b'[' => *brackets += 1,
+            b']' => *brackets -= 1,
+            _ => {}
+        }
+        i += 1;
+    }
+}
+
+fn reindent_css_fragment_lines(body: &str, indent: &str) -> Vec<String> {
+    let lines: Vec<&str> = body.lines().collect();
+    let mut parens = 0i32;
+    let mut brackets = 0i32;
+    let mut out = Vec::with_capacity(lines.len());
+    for (i, raw) in lines.iter().enumerate() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            if out.is_empty() || out.last().is_some_and(String::is_empty) {
+                continue;
+            }
+            out.push(String::new());
+            continue;
+        }
+        let start_parens = parens;
+        let start_brackets = brackets;
+        bump_css_grouping_depth(trimmed, &mut parens, &mut brackets);
+        let next = lines
+            .iter()
+            .skip(i + 1)
+            .map(|line| line.trim())
+            .find(|line| !line.is_empty())
+            .unwrap_or("");
+        let next_is_continuation = parens > 0
+            || brackets > 0
+            || looks_like_css_value_continuation(next)
+            || trimmed.ends_with(',')
+            || trimmed.ends_with('(')
+            || trimmed.ends_with(':');
+        let keep_open = start_parens > 0
+            || start_brackets > 0
+            || next_is_continuation
+            || trimmed.ends_with('{')
+            || trimmed.ends_with('}');
+        let text = if keep_open {
+            trimmed.to_string()
+        } else {
+            ensure_semicolon(trimmed).into_owned()
+        };
+        let continuation_pad =
+            if start_parens > 0 || start_brackets > 0 || looks_like_css_value_continuation(trimmed)
+            {
+                "    "
+            } else {
+                ""
+            };
+        out.push(format!("{indent}{continuation_pad}{text}"));
+    }
+    while out.last().is_some_and(String::is_empty) {
+        out.pop();
+    }
+    out
+}
+
+fn append_reindented_css_fragment(out: &mut String, body: &str, indent: &str) {
+    for line in reindent_css_fragment_lines(body, indent) {
+        out.push_str(&line);
+        out.push('\n');
+    }
 }
 
 fn is_ident_continue(c: char) -> bool {
@@ -2233,12 +2399,7 @@ fn inverted_conditional_body_lines(
                 lines.push(line.to_string());
             }
         } else {
-            for line in nr.lines() {
-                let trimmed = line.trim();
-                if !trimmed.is_empty() {
-                    lines.push(format!("{inner_indent}{}", ensure_semicolon(trimmed)));
-                }
-            }
+            lines.extend(reindent_css_fragment_lines(nr, inner_indent));
         }
     }
     lines
@@ -2321,14 +2482,7 @@ fn format_conditional_into_lines(
                 lines.push(line.to_string());
             }
         } else {
-            for line in nr.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    lines.push(String::new());
-                } else {
-                    lines.push(format!("{level2}{}", ensure_semicolon(trimmed)));
-                }
-            }
+            lines.extend(reindent_css_fragment_lines(nr, &level2));
         }
     }
     lines.push(format!("{nested_indent}}}"));
@@ -2459,14 +2613,7 @@ fn conditional_as_nested_rule(
         at_inner.push('\n');
     }
     for nr in &nested {
-        for line in nr.lines() {
-            let trimmed = line.trim();
-            if !trimmed.is_empty() {
-                at_inner.push_str("        ");
-                at_inner.push_str(&ensure_semicolon(trimmed));
-                at_inner.push('\n');
-            }
-        }
+        append_reindented_css_fragment(&mut at_inner, nr, "        ");
     }
     Some(format!(
         "{rel_sel} {{\n    {at_header} {{\n{at_inner}    }}\n}}"
@@ -3213,14 +3360,7 @@ fn format_merged_rule(
             };
             body_lines.push(render_item_indented(&item, &nested_indent, unit));
         } else {
-            for line in nr.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    body_lines.push(String::new());
-                } else {
-                    body_lines.push(format!("{nested_indent}{}", ensure_semicolon(trimmed)));
-                }
-            }
+            body_lines.extend(reindent_css_fragment_lines(nr, &nested_indent));
         }
 
         if idx < all_nested_rules.len() - 1 {
@@ -3248,14 +3388,7 @@ fn format_merged_rule(
                 };
                 body_lines.push(render_item_indented(&item, &nested_indent, unit));
             } else {
-                for line in nr.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() {
-                        body_lines.push(String::new());
-                    } else {
-                        body_lines.push(format!("{nested_indent}{}", ensure_semicolon(trimmed)));
-                    }
-                }
+                body_lines.extend(reindent_css_fragment_lines(nr, &nested_indent));
             }
             if idx < absorbed_nests.len() - 1 {
                 body_lines.push(String::new());
@@ -3265,6 +3398,25 @@ fn format_merged_rule(
 
     let body_content = body_lines.join("\n");
     format!("{parent_indent}{first_sel} {{\n{body_content}\n{parent_indent}}}")
+}
+
+fn style_bodies_have_conflicting_properties(source: &str, a: &SourceNode, b: &SourceNode) -> bool {
+    let a_body = a.body(source).unwrap_or("");
+    let b_body = b.body(source).unwrap_or("");
+    let mut seen: HashMap<String, (String, bool)> = HashMap::new();
+    for (prop, value) in top_level_declarations(a_body) {
+        let (prop_key, value_key, important) = declaration_dup_key(&prop, &value);
+        seen.insert(prop_key, (value_key, important));
+    }
+    for (prop, value) in top_level_declarations(b_body) {
+        let (prop_key, value_key, important) = declaration_dup_key(&prop, &value);
+        if let Some((prev_value, prev_important)) = seen.get(&prop_key)
+            && (prev_value != &value_key || *prev_important != important)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn plan_merge_adjacent_identical_selectors(
@@ -3291,7 +3443,11 @@ fn plan_merge_adjacent_identical_selectors(
                 if !is_whitespace_only(source, prev_end..next.start) {
                     break;
                 }
-                if matches!(&next.kind, NodeKind::Style) && next.prelude(source).trim() == first_sel
+                if matches!(&next.kind, NodeKind::Style)
+                    && next.prelude(source).trim() == first_sel
+                    && !cluster
+                        .iter()
+                        .any(|prev| style_bodies_have_conflicting_properties(source, prev, next))
                 {
                     cluster.push(next);
                     prev_end = next.end;
@@ -3553,11 +3709,12 @@ fn collect_gather_cluster(
                 {
                     continue;
                 }
+                let delete_whole_at_block = !at_block_has_direct_declarations(source, node);
                 for inner in leaves {
                     cluster.push(GatherMember::Conditional {
                         at_node: node.clone(),
                         inner,
-                        delete_whole_at_block: true,
+                        delete_whole_at_block,
                     });
                 }
                 continue;
@@ -3598,21 +3755,23 @@ fn collect_gather_cluster(
                 .cloned()
                 .collect();
             if !related.is_empty() {
-                let delete_whole_at_block = related.len() == inner_nodes.len()
-                    || (dominate
-                        && style_inners.iter().all(|inner| {
-                            let sel = inner.prelude(source).trim();
-                            ((name != "starting-style"
-                                && style_belongs_to_home(
-                                    source,
-                                    inner,
-                                    base,
-                                    exact_homes,
-                                    home_weight,
-                                ))
-                                || (name == "starting-style" && sel == base))
-                                || (name != "starting-style" && is_absorbable_descendant(base, sel))
-                        }));
+                let delete_whole_at_block = !at_block_has_direct_declarations(source, node)
+                    && (related.len() == inner_nodes.len()
+                        || (dominate
+                            && style_inners.iter().all(|inner| {
+                                let sel = inner.prelude(source).trim();
+                                ((name != "starting-style"
+                                    && style_belongs_to_home(
+                                        source,
+                                        inner,
+                                        base,
+                                        exact_homes,
+                                        home_weight,
+                                    ))
+                                    || (name == "starting-style" && sel == base))
+                                    || (name != "starting-style"
+                                        && is_absorbable_descendant(base, sel))
+                            })));
                 for inner in related {
                     cluster.push(GatherMember::Conditional {
                         at_node: node.clone(),
@@ -4215,6 +4374,11 @@ fn dedupe_inside_nested_rule(nr: &str) -> String {
     format!("{head}{prelude} {{\n{}\n}}", inner_lines.join("\n"))
 }
 
+fn at_block_has_direct_declarations(source: &str, node: &SourceNode) -> bool {
+    node.body(source)
+        .is_some_and(|body| !top_level_declarations(body).is_empty())
+}
+
 fn gather_member_already_inside_home(member: &GatherMember, home: &SourceNode) -> bool {
     let (start, end) = match member {
         GatherMember::Style(n) => (n.start, n.end),
@@ -4405,6 +4569,14 @@ fn plan_gather_related_selector_rules(
             })
         {
             cluster.retain(|m| !gather_member_already_inside_home(m, &home));
+            cluster.retain(|m| match m {
+                GatherMember::Style(n) => {
+                    n.start == home.start
+                        || n.prelude(source).trim() != home.prelude(source).trim()
+                        || !style_bodies_have_conflicting_properties(source, &home, n)
+                }
+                GatherMember::Conditional { .. } => true,
+            });
         }
 
         if cluster.len() > 1 {
@@ -4674,14 +4846,11 @@ fn plan_factor_identical_states_with_is(
                         let inner_decl_indent = format!("{nested_indent}{unit}");
 
                         let mut decls = String::new();
-                        for line in source[first_body_range.clone()].lines() {
-                            let trimmed = line.trim();
-                            if !trimmed.is_empty() {
-                                decls.push_str(&inner_decl_indent);
-                                decls.push_str(&ensure_semicolon(trimmed));
-                                decls.push('\n');
-                            }
-                        }
+                        append_reindented_css_fragment(
+                            &mut decls,
+                            &source[first_body_range.clone()],
+                            &inner_decl_indent,
+                        );
 
                         let proposed = format!(
                             "{parent_indent}{base} {{\n{nested_indent}&:is({is_inner}) {{\n{decls}{nested_indent}}}\n{parent_indent}}}"
@@ -4776,14 +4945,14 @@ fn plan_factor_multi_selector_cluster_with_is(
                         if suffix.is_none()
                             && let Some(c_body_range) = &c_node.body_range
                         {
-                            for line in source[c_body_range.clone()].lines() {
-                                let trimmed = line.trim();
-                                if !trimmed.is_empty() {
-                                    out.push_str(&nested_indent);
-                                    out.push_str(&ensure_semicolon(trimmed));
-                                    out.push('\n');
-                                    has_direct_decls = true;
-                                }
+                            let before = out.len();
+                            append_reindented_css_fragment(
+                                &mut out,
+                                &source[c_body_range.clone()],
+                                &nested_indent,
+                            );
+                            if out.len() > before {
+                                has_direct_decls = true;
                             }
                         }
                     }
@@ -4798,14 +4967,11 @@ fn plan_factor_multi_selector_cluster_with_is(
                             out.push_str(sub_sel);
                             out.push_str(" {\n");
                             if let Some(c_body_range) = &c_node.body_range {
-                                for line in source[c_body_range.clone()].lines() {
-                                    let trimmed = line.trim();
-                                    if !trimmed.is_empty() {
-                                        out.push_str(&inner_decl_indent);
-                                        out.push_str(&ensure_semicolon(trimmed));
-                                        out.push('\n');
-                                    }
-                                }
+                                append_reindented_css_fragment(
+                                    &mut out,
+                                    &source[c_body_range.clone()],
+                                    &inner_decl_indent,
+                                );
                             }
                             out.push_str(&nested_indent);
                             out.push_str("}\n");
@@ -4940,14 +5106,11 @@ fn plan_merge_identical_rule_bodies(
                     let nested_indent = format!("{parent_indent}{unit}");
 
                     let mut decls = String::new();
-                    for line in source[first_body_range.clone()].lines() {
-                        let trimmed = line.trim();
-                        if !trimmed.is_empty() {
-                            decls.push_str(&nested_indent);
-                            decls.push_str(&ensure_semicolon(trimmed));
-                            decls.push('\n');
-                        }
-                    }
+                    append_reindented_css_fragment(
+                        &mut decls,
+                        &source[first_body_range.clone()],
+                        &nested_indent,
+                    );
 
                     let joined_sel = selectors.join(&format!(",\n{parent_indent}"));
                     let proposed =
@@ -5077,11 +5240,7 @@ pub fn factor_selector_list(
     out.push_str(&nested_indent);
     out.push_str(&inner_selectors.join(&format!(",\n{nested_indent}")));
     out.push_str(" {\n");
-    for line in preserve_body_lines(body) {
-        out.push_str(&inner_decl_indent);
-        out.push_str(&ensure_semicolon(&line));
-        out.push('\n');
-    }
+    append_reindented_css_fragment(&mut out, body, &inner_decl_indent);
     out.push_str(&nested_indent);
     out.push_str("}\n");
     out.push_str(indent);
@@ -5672,11 +5831,7 @@ fn render_cluster(source: &str, parent: &SourceNode, children: &[ClusterChild]) 
     let trimmed_body = parent_body.trim();
     if !trimmed_body.is_empty() {
         out.push('\n');
-        for line in preserve_body_lines(parent_body) {
-            out.push_str(&nested_indent);
-            out.push_str(&ensure_semicolon(&line));
-            out.push('\n');
-        }
+        append_reindented_css_fragment(&mut out, parent_body, &nested_indent);
     }
 
     // Build hierarchical rules
@@ -5816,11 +5971,7 @@ fn render_hierarchical_rule(out: &mut String, rule: &HierarchicalRule, indent: &
                 out.push('\n');
             }
             if sub.relative_selector.is_empty() {
-                for line in &sub.body_lines {
-                    out.push_str(&inner_indent);
-                    out.push_str(&ensure_semicolon(line));
-                    out.push('\n');
-                }
+                append_reindented_css_fragment(out, &sub.body_lines.join("\n"), &inner_indent);
             } else {
                 render_hierarchical_rule(out, sub, &inner_indent, unit);
             }
@@ -5832,11 +5983,7 @@ fn render_hierarchical_rule(out: &mut String, rule: &HierarchicalRule, indent: &
         out.push_str(&rule.relative_selector);
         out.push_str(" {\n");
 
-        for line in &rule.body_lines {
-            out.push_str(&inner_indent);
-            out.push_str(&ensure_semicolon(line));
-            out.push('\n');
-        }
+        append_reindented_css_fragment(out, &rule.body_lines.join("\n"), &inner_indent);
 
         for sub in &rule.sub_rules {
             out.push('\n');
@@ -6665,6 +6812,24 @@ mod tests {
         assert!(output.contains(".card {"));
         assert!(output.contains("color: black;"));
         assert!(output.contains("padding: 1rem;"));
+    }
+
+    #[test]
+    fn does_not_merge_adjacent_identical_selectors_with_conflicting_decls() {
+        let css = ":focus-visible {
+  outline: 3px solid Highlight;
+}
+
+:focus-visible {
+  outline: 2px solid Highlight !important;
+}
+";
+        let plans = plan(css, &[RuleId::MergeAdjacentIdenticalSelector]);
+        assert!(
+            plans.is_empty(),
+            "must not concatenate conflicting outline values: {:?}",
+            plans.iter().map(|p| &p.proposed).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -8305,5 +8470,108 @@ mod tests {
             1,
             "cluster nest must not be cloned:\n{output}"
         );
+    }
+
+    #[test]
+    fn parse_keeps_multiline_filter_and_gradient_values_intact() {
+        let css = r#".hero-billboard__name {
+    background: linear-gradient(
+        135deg,
+        #ffffff 15%,
+        rgba(203, 213, 225, 0.75) 100%
+    );
+    filter: drop-shadow(0 2px 20px rgba(45, 212, 191, 0.14))
+        drop-shadow(0 8px 30px rgba(0, 0, 0, 0.75));
+
+    &:hover {
+        filter: drop-shadow(0 2px 30px rgba(45, 212, 191, 0.35))
+            drop-shadow(0 10px 40px rgba(0, 0, 0, 0.85));
+    }
+}
+"#;
+        let (decls, nested) = parse_rule_body_items(
+            r#"
+    background: linear-gradient(
+        135deg,
+        #ffffff 15%,
+        rgba(203, 213, 225, 0.75) 100%
+    );
+    filter: drop-shadow(0 2px 20px rgba(45, 212, 191, 0.14))
+        drop-shadow(0 8px 30px rgba(0, 0, 0, 0.75));
+"#,
+        );
+        assert_eq!(decls.len(), 2, "decls={decls:?}");
+        assert!(
+            decls[0].contains("linear-gradient(") && decls[0].contains("#ffffff"),
+            "gradient split: {decls:?}"
+        );
+        assert!(
+            decls[1].contains("drop-shadow(0 2px 20px")
+                && decls[1].contains("drop-shadow(0 8px 30px"),
+            "filter split: {decls:?}"
+        );
+        assert!(nested.is_empty());
+
+        let output = apply_until_stable(Path::new("test.css"), css, &RuleId::ALL, false).unwrap();
+        assert!(
+            !output.contains("linear-gradient(;")
+                && !output.contains("background: linear-gradient(;"),
+            "gradient truncated: {output}"
+        );
+        assert!(
+            !output.contains("filter: drop-shadow(0 2px 20px rgba(45, 212, 191, 0.14));"),
+            "filter was terminated before its continuation: {output}"
+        );
+        assert!(
+            output.contains("drop-shadow(0 8px 30px") && output.contains("drop-shadow(0 10px 40px"),
+            "filter values lost: {output}"
+        );
+    }
+
+    #[test]
+    fn gather_does_not_steal_parent_decls_from_mixed_media() {
+        let css = r#".split-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+
+    lottie-player {
+        max-width: 440px;
+        transform: scale(0.8);
+    }
+
+    @media (width>=840px) {
+        grid-template-columns: 1.2fr 0.8fr;
+        align-items: center;
+
+        lottie-player {
+            max-width: 100%;
+            transform: none;
+        }
+    }
+}
+"#;
+        let output = apply_until_stable(
+            Path::new("test.css"),
+            css,
+            &[
+                RuleId::NestMedia,
+                RuleId::NestDescendant,
+                RuleId::GatherRelatedSelectorRules,
+                RuleId::DedupeIdenticalDeclarations,
+            ],
+            false,
+        )
+        .unwrap();
+        assert!(
+            output.contains("grid-template-columns: 1.2fr 0.8fr"),
+            "parent media decls must survive: {output}"
+        );
+        assert!(
+            output.contains("align-items: center"),
+            "parent media decls must survive: {output}"
+        );
+        let open = output.matches('{').count();
+        let close = output.matches('}').count();
+        assert_eq!(open, close, "unbalanced braces: {output}");
     }
 }
