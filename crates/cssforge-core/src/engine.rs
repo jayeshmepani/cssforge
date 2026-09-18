@@ -846,11 +846,19 @@ fn build_plans(
             if enabled.contains(&RuleId::ModernizeIs)
                 && let Some((factored_sel, uniform)) = factor_with_is(parent_selector)
             {
+                let id_risk = !uniform
+                    && split_top_level_comma(parent_selector)
+                        .iter()
+                        .any(|b| calculate_specificity(b.trim()).ids > 0);
                 plans.push(PlanEntry {
                         id: String::new(),
                         file: path.to_path_buf(),
                         rules: vec![RuleId::ModernizeIs],
-                        safety: if uniform { Safety::Safe } else { Safety::Review },
+                        safety: if uniform || !id_risk {
+                            Safety::Safe
+                        } else {
+                            Safety::Review
+                        },
                         source_range: SourceRange {
                             start: parent.prelude_range.start,
                             end: parent.prelude_range.end,
@@ -5115,15 +5123,14 @@ fn plan_merge_identical_rule_bodies(
                     let joined_sel = selectors.join(&format!(",\n{parent_indent}"));
                     let proposed =
                         format!("{parent_indent}{joined_sel} {{\n{decls}{parent_indent}}}");
+                    // A comma-separated selector list keeps each branch's own
+                    // specificity. Mixing ::selection with .button--primary does
+                    // not raise or lower either selector the way :is() would.
                     plans.push(PlanEntry {
                         id: String::new(),
                         file: path.to_path_buf(),
                         rules: vec![RuleId::MergeIdenticalRuleBodies],
-                        safety: if uniform_specificity {
-                            Safety::Safe
-                        } else {
-                            Safety::Review
-                        },
+                        safety: Safety::Safe,
                         source_range: SourceRange {
                             start: first.start,
                             end: last.end,
@@ -5131,13 +5138,13 @@ fn plan_merge_identical_rule_bodies(
                         original: source[first.start..last.end].to_string(),
                         proposed,
                         proof: Proof {
-                            specificity_equivalent: uniform_specificity,
+                            specificity_equivalent: true,
                             ..Proof::safe_local()
                         },
                         warnings: if uniform_specificity {
                             Vec::new()
                         } else {
-                            vec!["Mixed selector specificity: combining these selectors changes cascade weight.".into()]
+                            vec!["Mixed selector specificity: each comma-list branch keeps its own specificity.".into()]
                         },
                         reason: format!("Merge {} rules with identical declaration bodies into a single comma-separated rule.", cluster.len()),
                         selected: true,
@@ -5369,6 +5376,51 @@ fn contains_pseudo_element_syntax(selector: &str) -> bool {
     })
 }
 
+fn shared_trailing_pseudo_class<'a>(branches: &[&'a str]) -> Option<&'a str> {
+    let first = branches.first().copied()?.trim();
+    let mut paren = 0usize;
+    let mut brack = 0usize;
+    let mut last_colon: Option<usize> = None;
+    let mut prev = '\0';
+    for (i, c) in first.char_indices() {
+        match c {
+            '(' => paren += 1,
+            ')' => paren = paren.saturating_sub(1),
+            '[' => brack += 1,
+            ']' => brack = brack.saturating_sub(1),
+            ':' if paren == 0 && brack == 0 => {
+                if prev == ':' {
+                    last_colon = None;
+                } else {
+                    last_colon = Some(i);
+                }
+            }
+            _ => {}
+        }
+        prev = c;
+    }
+    let start = last_colon?;
+    let suffix = &first[start..];
+    if suffix.len() < 2 || suffix.starts_with("::") {
+        return None;
+    }
+    if !suffix[1..]
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return None;
+    }
+    branches
+        .iter()
+        .all(|b| {
+            let b = b.trim();
+            b.len() > suffix.len()
+                && b.ends_with(suffix)
+                && !b[..b.len() - suffix.len()].ends_with(':')
+        })
+        .then_some(suffix)
+}
+
 pub fn factor_with_is(selector: &str) -> Option<(String, bool)> {
     let branches: Vec<&str> = split_top_level_comma(selector)
         .into_iter()
@@ -5428,6 +5480,22 @@ pub fn factor_with_is(selector: &str) -> Option<(String, bool)> {
                 let is_inner = suffixes.join(", ");
                 return Some((format!("{prefix}:is({is_inner})"), uniform_specificity));
             }
+        }
+    }
+
+    // Shared pseudo-class suffix (e.g. a:hover, button:hover, .clickable:hover
+    // -> :is(a, button, .clickable):hover).
+    if let Some(suffix) = shared_trailing_pseudo_class(&branches) {
+        let prefixes: Vec<&str> = branches
+            .iter()
+            .map(|b| b[..b.len() - suffix.len()].trim())
+            .collect();
+        if prefixes
+            .iter()
+            .all(|p| !p.is_empty() && is_valid_selector_token(p) && !p.ends_with(':'))
+        {
+            let is_inner = prefixes.join(", ");
+            return Some((format!(":is({is_inner}){suffix}"), uniform_specificity));
         }
     }
 
@@ -6398,13 +6466,16 @@ mod tests {
     }
 
     #[test]
-    fn marks_mixed_specificity_identical_body_merges_for_review() {
+    fn merges_mixed_specificity_identical_bodies_as_comma_list() {
         let css =
             ".form-select option { color: white; }\nselect.form-control option { color: white; }\n";
         let plans = plan(css, &[RuleId::MergeIdenticalRuleBodies]);
         assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].safety, Safety::Review);
-        assert!(!plans[0].proof.specificity_equivalent);
+        assert_eq!(plans[0].safety, Safety::Safe);
+        assert!(plans[0].proof.specificity_equivalent);
+        let output = apply_selected_plans(css, &plans, false).unwrap();
+        assert!(output.contains(".form-select option,"));
+        assert!(output.contains("select.form-control option {"));
     }
 
     #[test]
@@ -6640,6 +6711,55 @@ mod tests {
         assert_eq!(plans.len(), 1);
         let output = apply_selected_plans(css, &plans, false).unwrap();
         assert!(output.contains(".button:is(:hover, :focus, :active)"));
+    }
+
+    #[test]
+    fn factors_shared_hover_suffix_into_is() {
+        let css = r#"a:hover,
+button:hover,
+[role="button"]:hover,
+.clickable:hover {
+    cursor: pointer;
+}
+"#;
+        let plans = plan(css, &[RuleId::ModernizeIs]);
+        assert_eq!(plans.len(), 1, "{plans:?}");
+        assert_eq!(plans[0].safety, Safety::Safe);
+        let output =
+            apply_until_stable(Path::new("test.css"), css, &[RuleId::ModernizeIs], false).unwrap();
+        assert!(
+            output.contains(":is(a, button, [role=\"button\"], .clickable):hover"),
+            "{output}"
+        );
+        assert!(!output.contains("a:hover,"));
+    }
+
+    #[test]
+    fn merges_selection_and_class_with_identical_bodies() {
+        let css = r#"::selection {
+    background: Highlight !important;
+    color: HighlightText !important;
+}
+
+.button--primary {
+    background: Highlight !important;
+    color: HighlightText !important;
+}
+"#;
+        let output = apply_until_stable(
+            Path::new("test.css"),
+            css,
+            &[RuleId::MergeIdenticalRuleBodies],
+            false,
+        )
+        .unwrap();
+        assert!(output.contains("::selection,"), "{output}");
+        assert!(output.contains(".button--primary {"), "{output}");
+        assert_eq!(
+            output.matches("Highlight !important").count(),
+            1,
+            "bodies must merge once: {output}"
+        );
     }
 
     #[test]
